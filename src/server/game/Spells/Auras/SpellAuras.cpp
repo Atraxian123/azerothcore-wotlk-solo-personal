@@ -1003,6 +1003,14 @@ bool Aura::ModStackAmount(int32 num, AuraRemoveMode removeMode, bool periodicRes
     // Update stack amount
     if (refresh)
     {
+//IVAN BATTAGLIA DoT / HoT rollover
+        // custom: record what the old application still owed, before the refresh resets its ticks
+        if (m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_CARRY_PERIODIC_REMAINDER))
+            for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+                if (AuraEffect* aurEff = m_effects[i])
+                    aurEff->CaptureRemainingPeriodic();
+//END
+
         RefreshSpellMods();
         RefreshTimers(periodicReset);
 

@@ -10988,6 +10988,23 @@ void Player::AddSpellAndCategoryCooldowns(SpellInfo const* spellInfo, uint32 ite
             }
         }
 
+//IVAN BATTAGLIA haste effect on cooldown
+        // custom: haste-scaled cooldowns (spell haste only shortens, never lengthens)
+        if (spellInfo->HasAttribute(SPELL_ATTR0_CU2_HASTE_SCALED_COOLDOWN))
+        {
+            float const hasteMod = GetFloatValue(UNIT_MOD_CAST_SPEED);   // < 1.0 with haste
+            if (hasteMod > 0.0f && hasteMod < 1.0f)
+            {
+                if (rec > 0)
+                    rec = int32(rec * hasteMod);
+                if (catrec > 0)
+                    catrec = int32(catrec * hasteMod);
+
+                needsCooldownPacket = true;   // the client must be told the real duration
+            }
+        }
+//END
+
         // replace negative cooldowns by 0
         if (rec < 0) rec = 0;
         if (catrec < 0) catrec = 0;

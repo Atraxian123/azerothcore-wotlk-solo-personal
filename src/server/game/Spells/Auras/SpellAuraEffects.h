@@ -120,6 +120,9 @@ public:
 //IVAN BATTAGLIA periodic tick
     void ResetPeriodic(bool resetPeriodicTimer = false) { if (resetPeriodicTimer) m_periodicTimer = m_amplitude; m_tickNumber = 0; m_partialTickDone = false; }
     void ResetTicks() { m_tickNumber = 0; m_partialTickDone = false; }
+//IVAN BATTAGLIA DoT / HoT rollover
+    int32 m_carriedTotal = 0;          // custom: total amount still owed by the previous application
+	void CaptureRemainingPeriodic();
 
 
 private:

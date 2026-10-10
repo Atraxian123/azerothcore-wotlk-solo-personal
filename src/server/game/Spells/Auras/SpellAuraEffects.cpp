@@ -578,6 +578,17 @@ int32 AuraEffect::CalculateAmount(Unit* caster)
     GetBase()->CallScriptEffectCalcAmountHandlers(this, amount, m_canBeRecalculated);
 
     amount *= GetBase()->GetStackAmount();
+
+//IVAN BATTAGLIA DoT / HoT rollover
+    // custom: spread what the previous application still owed over the new application's ticks
+    if (m_carriedTotal > 0)
+    {
+        int32 const totalTicks = GetTotalTicks();
+        if (totalTicks > 0)
+            amount += int32((int64(m_carriedTotal) + totalTicks / 2) / totalTicks);
+    }
+//END	
+	
     return amount;
 }
 
@@ -7146,4 +7157,29 @@ void AuraEffect::TryPartialLastTick(Unit* caster)
             PeriodicTick(app, caster);
 
     m_tickScale = 1.0f;
+}
+
+//IVAN BATTAGLIA DoT / HoT rollover
+void AuraEffect::CaptureRemainingPeriodic()
+{
+    m_carriedTotal = 0;
+
+    if (!m_isPeriodic || m_amount <= 0)
+        return;
+
+    switch (GetAuraType())
+    {
+        case SPELL_AURA_PERIODIC_DAMAGE:
+        case SPELL_AURA_PERIODIC_HEAL:
+            break;
+        default:
+            return;
+    }
+
+    int32 const remainingTicks = GetTotalTicks() - int32(m_tickNumber);
+    if (remainingTicks <= 0)
+        return;
+
+    int64 const total = int64(m_amount) * remainingTicks;
+    m_carriedTotal = int32(std::min<int64>(total, 0x7FFFFFFF));
 }

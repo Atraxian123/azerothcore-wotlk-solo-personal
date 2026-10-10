@@ -212,6 +212,44 @@ enum SpellCustomAttributes
     SPELL_ATTR0_CU_POSITIVE                      = SPELL_ATTR0_CU_POSITIVE_EFF0 | SPELL_ATTR0_CU_POSITIVE_EFF1 | SPELL_ATTR0_CU_POSITIVE_EFF2,
 };
 
+//IVAN BATTAGLIA aggiungo nuovi attributi custom
+enum SpellCustomAttributes2
+{
+    SPELL_ATTR0_CU2_FLAT_CHAIN_MULTIPLIER	 	= 0x00000001,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_02 			= 0x00000002,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_03 			= 0x00000004,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_04 			= 0x00000008,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_05 			= 0x00000010,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_06 			= 0x00000020,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_07 			= 0x00000040,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_08 			= 0x00000080,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_09 			= 0x00000100,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_10 			= 0x00000200,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_11 			= 0x00000400,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_12 			= 0x00000800,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_13 			= 0x00001000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_14 			= 0x00002000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_15 			= 0x00004000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_16 			= 0x00008000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_17 			= 0x00010000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_18 			= 0x00020000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_19 			= 0x00040000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_20 			= 0x00080000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_21 			= 0x00100000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_22 			= 0x00200000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_23 			= 0x00400000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_24 			= 0x00800000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_25 			= 0x01000000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_26 			= 0x02000000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_27 			= 0x04000000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_28 			= 0x08000000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_29 			= 0x10000000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_30 			= 0x20000800,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_31 			= 0x20000000,
+    SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_32 			= 0x40000000,
+	SPELL_ATTR0_CU2_CUSTOMATTRIBUTE_33 			= 0x80000000
+};
+
 uint32 GetTargetFlagMask(SpellTargetObjectTypes objType);
 
 struct SpellDiminishInfo
@@ -354,6 +392,7 @@ public:
     uint32 AttributesEx6;
     uint32 AttributesEx7;
     uint32 AttributesCu;
+	uint32 AttributesCu2;	//IVAN BATTAGLIA aggiungo nuovi attributi
     uint32 Stances;
     uint32 StancesNot;
     uint32 Targets;
@@ -447,6 +486,7 @@ public:
     inline bool HasAttribute(SpellAttr6 attribute) const { return (AttributesEx6 & attribute) != 0; }
     inline bool HasAttribute(SpellAttr7 attribute) const { return (AttributesEx7 & attribute) != 0; }
     inline bool HasAttribute(SpellCustomAttributes customAttribute) const { return (AttributesCu & customAttribute) != 0; }
+	inline bool HasAttribute(SpellCustomAttributes2 customAttribute2) const { return (AttributesCu2 & customAttribute2) != 0; }	//IVAN BATTAGLIA cerco custom attributes 2
 
     bool IsExplicitDiscovery() const;
     bool IsLootCrafting() const;

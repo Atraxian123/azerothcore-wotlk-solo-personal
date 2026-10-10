@@ -8383,7 +8383,13 @@ void Spell::DoAllEffectOnLaunchTarget(TargetInfo& targetInfo, float* multiplier)
             if (m_applyMultiplierMask & (1 << i))
             {
                 m_damage = int32(m_damage * m_damageMultipliers[i]);
-                m_damageMultipliers[i] *= multiplier[i];
+//IVAN BATTAGLIA aggiungo caso di moltiplicatore singolo per il chain				
+                //m_damageMultipliers[i] *= multiplier[i];
+				if (m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_FLAT_CHAIN_MULTIPLIER))
+					m_damageMultipliers[i] = multiplier[i];
+				else
+					m_damageMultipliers[i] *= multiplier[i];				
+			//FINE
             }
             targetInfo.damage += m_damage;
             targetInfo.damageBeforeTakenMods += m_damageBeforeTakenMods;

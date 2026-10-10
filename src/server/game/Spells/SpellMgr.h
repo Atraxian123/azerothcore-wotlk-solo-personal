@@ -805,6 +805,7 @@ public:
     void UnloadSpellInfoStore();
     void UnloadSpellInfoImplicitTargetConditionLists();
     void LoadSpellInfoCustomAttributes();
+    void LoadSpellInfoCustomAttributes2();	//IVAN BATTAGLIA dichiaro l'inizializzazione dei custo mattributes
     void LoadSpellInfoImmunities();
     void LoadSpellInfoCorrections();
     void LoadSpellSpecificAndAuraState();

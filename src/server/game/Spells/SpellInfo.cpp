@@ -798,6 +798,7 @@ SpellInfo::SpellInfo(SpellEntry const* spellEntry)
     AttributesEx6 = spellEntry->AttributesEx6;
     AttributesEx7 = spellEntry->AttributesEx7;
     AttributesCu = 0;
+	AttributesCu2 = 0;	//IVAN BATTAGLIA inizializzo gli attributi della spell
     Stances = spellEntry->Stances;
     StancesNot = spellEntry->StancesNot;
     Targets = spellEntry->Targets;

@@ -418,6 +418,10 @@ void World::SetInitialWorldSettings()
     LOG_INFO("server.loading", "Loading SpellInfo Custom Attributes...");
     sSpellMgr->LoadSpellInfoCustomAttributes();
 
+//IVAN BATTAGLIA caricamento custom attributes
+    LOG_INFO("server.loading", "Loading SpellInfo Custom Attributes 2...");
+    sSpellMgr->LoadSpellInfoCustomAttributes2();
+
     LOG_INFO("server.loading", "Loading Spell Jump Distances...");
     sSpellMgr->LoadSpellJumpDistances();
 

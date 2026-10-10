@@ -3900,3 +3900,39 @@ void SpellMgr::LoadSpellInfoImmunities()
 
     LOG_INFO("server.loading", ">> Loaded SpellInfo immunity infos in {} ms", GetMSTimeDiffToNow(oldMSTime));
 }
+
+
+//IVAN BATTAGLIA
+void SpellMgr::LoadSpellInfoCustomAttributes2()
+{
+    uint32 const oldMSTime = getMSTime();
+
+    QueryResult result = WorldDatabase.Query("SELECT spell_id, attributes FROM spell_custom_attr2");
+    if (!result)
+    {
+        LOG_WARN("server.loading", ">> Loaded 0 Spell Custom Attributes 2 From DB. DB table `spell_custom_attr2` Is Empty.");
+        return;
+    }
+
+    uint32 count = 0;
+    do
+    {
+        Field const* fields = result->Fetch();
+
+        uint32 const spellId    = fields[0].Get<uint32>();
+        uint32 const attributes = fields[1].Get<uint32>();
+
+        SpellInfo* spellInfo = _GetSpellInfo(spellId);
+        if (!spellInfo)
+        {
+            LOG_INFO("sql.sql", "Table `spell_custom_attr2` has wrong spell (spell_id: {}), ignored.", spellId);
+            continue;
+        }
+
+        spellInfo->AttributesCu2 |= attributes;
+        ++count;
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} Spell Custom Attributes 2 From DB in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}

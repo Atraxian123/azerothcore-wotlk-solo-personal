@@ -667,6 +667,7 @@ public:
     bool m_needComboPoints;
     uint8 m_applyMultiplierMask;
     float m_damageMultipliers[3];
+	uint8 m_chainHitCount[3]; //IVAN BATTAGLIA moltiplicatori di danno da catena flat
 
     // Current targets, to be used in SpellEffects (MUST BE USED ONLY IN SPELL EFFECTS)
     Unit* unitTarget;

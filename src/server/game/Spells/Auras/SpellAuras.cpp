@@ -781,6 +781,8 @@ void Aura::Update(uint32 diff, Unit* caster)
             }
         }
     }
+	//IVAN BATTAGLIA
+	UpdateStackTimers(diff);
 }
 
 int32 Aura::CalcMaxDuration(Unit* caster) const
@@ -990,6 +992,34 @@ bool Aura::ModStackAmount(int32 num, AuraRemoveMode removeMode, bool periodicRes
 
         // reset charges
         SetCharges(CalcMaxCharges());
+    }
+
+//IVAN BATTAGLIA
+    // --- custom: per-stack timers ---
+    if (UsesStackTimers())
+    {
+        SyncStackTimers(); // queue size == old stack count
+
+        if (num > 0)
+        {
+            if (stackAmount > int32(m_stackAmount))
+            {
+                // room for a new stack
+                m_stackTimers.push_back(m_duration);
+            }
+            else
+            {
+                // already at max: refresh the oldest stack (it becomes the newest)
+                m_stackTimers.erase(m_stackTimers.begin());
+                m_stackTimers.push_back(m_duration);
+            }
+        }
+        else if (num < 0)
+        {
+            // losing stacks (expiry, dispel): the oldest ones go first
+            while (m_stackTimers.size() > size_t(stackAmount))
+                m_stackTimers.erase(m_stackTimers.begin());
+        }
     }
 
     SetStackAmount(stackAmount);
@@ -2952,4 +2982,42 @@ void DynObjAura::FillTargetMap(std::map<Unit*, uint8>& targets, Unit* /*caster*/
                 targets[*itr] = 1 << effIndex;
         }
     }
+}
+
+//IVAN BATTAGLIA
+bool Aura::UsesStackTimers() const
+{
+    return m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_STACKS_EXPIRE_INDIVIDUALLY)
+        && m_spellInfo->StackAmount > 1
+        && m_maxDuration > 0;
+}
+
+// Keeps the queue the same size as the stack count. Covers freshly created auras,
+// auras loaded from the DB, and anything that changes stacks via SetStackAmount().
+void Aura::SyncStackTimers()
+{
+    while (m_stackTimers.size() > m_stackAmount)
+        m_stackTimers.erase(m_stackTimers.begin());
+
+    while (m_stackTimers.size() < m_stackAmount)
+        m_stackTimers.insert(m_stackTimers.begin(), m_stackTimers.empty() ? m_duration : m_stackTimers.front());
+}
+
+void Aura::UpdateStackTimers(uint32 diff)
+{
+    if (!UsesStackTimers())
+        return;
+
+    SyncStackTimers();
+
+    for (int32& timer : m_stackTimers)
+        timer = std::max<int32>(0, timer - int32(diff));
+
+    // the newest stack is the one shown in the UI: it follows m_duration
+    m_stackTimers.back() = m_duration;
+
+    // older stacks expire one at a time; the last one is removed by the normal expiry path
+    while (m_stackTimers.size() > 1 && m_stackTimers.front() <= 0)
+        if (ModStackAmount(-1, AURA_REMOVE_BY_EXPIRE))
+            return; // aura was removed
 }

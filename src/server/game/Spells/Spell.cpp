@@ -587,6 +587,7 @@ Spell::Spell(Unit* caster, SpellInfo const* info, TriggerCastFlags triggerFlags,
     m_applyMultiplierMask = 0;
     m_auraScaleMask = 0;
     memset(m_damageMultipliers, 0, sizeof(m_damageMultipliers));
+	memset(m_chainHitCount, 0, sizeof(m_chainHitCount));	//IVAN BATTAGLIA serve per custom attribute 2 dimessare danno dopo 5 chain
 
     // Get data for type of attack
     switch (m_spellInfo->DmgClass)
@@ -8393,6 +8394,17 @@ void Spell::DoAllEffectOnLaunchTarget(TargetInfo& targetInfo, float* multiplier)
 
             if (m_applyMultiplierMask & (1 << i))
             {
+
+//IVAAN BATTAGLIA dimezzamento danno dopo 5 bersagli catena
+                constexpr uint8 CHAIN_HALVE_AFTER_TARGET = 5;
+
+                float chainMult = m_damageMultipliers[i];
+
+                // custom: from the 6th target onward, halve the chain multiplier
+                if (m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_CHAIN_HALVE_AFTER_FIFTH)
+                    && m_chainHitCount[i] >= CHAIN_HALVE_AFTER_TARGET)
+                    chainMult *= 0.5f;				
+//FINE				
                 m_damage = int32(m_damage * m_damageMultipliers[i]);
 //IVAN BATTAGLIA aggiungo caso di moltiplicatore singolo per il chain				
                 //m_damageMultipliers[i] *= multiplier[i];

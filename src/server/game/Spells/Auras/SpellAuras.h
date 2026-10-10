@@ -20,6 +20,7 @@
 
 #include "SpellAuraDefines.h"
 #include "Unit.h"
+#include <vector>	//IVAN BATTAGLIA
 
 class Unit;
 class SpellInfo;
@@ -253,6 +254,11 @@ public:
 private:
     void _DeleteRemovedApplications();
 
+    // IVAN BATTAGLIA custom: per-stack expiry
+    bool UsesStackTimers() const;
+    void SyncStackTimers();
+    void UpdateStackTimers(uint32 diff);
+
 protected:
     SpellInfo const* const m_spellInfo;
     ObjectGuid const m_casterGuid;
@@ -269,6 +275,7 @@ protected:
     uint8 const m_casterLevel;                          // Aura level (store caster level for correct show level dep amount)
     uint8 m_procCharges;                                // Aura charges (0 for infinite)
     uint8 m_stackAmount;                                // Aura stack amount
+	std::vector<int32> m_stackTimers;                   // IVAN BATTAGLIA custom: remaining ms per stack, oldest first; back() mirrors m_duration
 
     AuraEffect* m_effects[3];
     ApplicationMap m_applications;

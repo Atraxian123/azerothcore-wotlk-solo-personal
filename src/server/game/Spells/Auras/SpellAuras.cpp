@@ -865,7 +865,16 @@ void Aura::RefreshTimers(bool periodicReset /*= false*/)
     {
         return;
     }
-
+//IVAN BATTAGLIA leftover time carries over, custom attribute
+    // custom (pandemic): carry over leftover time, capped at 30% of the base duration,
+    // so the refreshed aura never lasts more than 130% of its base duration
+    if (m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_REFRESH_CARRY_LEFTOVER_TIME) && remaining > 0 && m_maxDuration > 0)
+    {
+        int32 const carry = std::min(remaining, int32(m_maxDuration * 0.3f));
+        m_maxDuration += carry;     // raises the tick budget and keeps the UI consistent
+        SetDuration(m_maxDuration);
+    }
+//END
     for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
     {
         if (AuraEffect* aurEff = m_effects[i])

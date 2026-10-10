@@ -665,8 +665,18 @@ void AuraEffect::CalculatePeriodic(Unit* caster, bool create, bool load)
         // reset periodic timer on aura create or on reapply when aura isn't dot
         // possibly we should not reset periodic timers only when aura is triggered by proc
         // or maybe there's a spell attribute somewhere
+//IVAN BATTAGLIA opt-in non reset della fase del tick
+        // Vanilla: refreshing restarts the tick timer for every periodic type except damage.
+        // Flagged spells keep their tick phase on refresh instead (retail behavior).
+        bool const keepPhase = m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_KEEP_PERIODIC_PHASE_ON_REFRESH);
+
         bool resetPeriodicTimer = create
-                                  || ((GetAuraType() != SPELL_AURA_PERIODIC_DAMAGE) && (GetAuraType() != SPELL_AURA_PERIODIC_DAMAGE_PERCENT));
+                                  || (!keepPhase
+                                      && (GetAuraType() != SPELL_AURA_PERIODIC_DAMAGE)
+                                      && (GetAuraType() != SPELL_AURA_PERIODIC_DAMAGE_PERCENT));
+
+//        bool resetPeriodicTimer = create
+//                                  || ((GetAuraType() != SPELL_AURA_PERIODIC_DAMAGE) && (GetAuraType() != SPELL_AURA_PERIODIC_DAMAGE_PERCENT));
 
         if (resetPeriodicTimer)
         {

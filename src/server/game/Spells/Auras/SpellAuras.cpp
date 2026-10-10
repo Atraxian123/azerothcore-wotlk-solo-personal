@@ -857,7 +857,9 @@ void Aura::RefreshDuration(bool withMods)
 
 void Aura::RefreshTimers(bool periodicReset /*= false*/)
 {
-    m_maxDuration = CalcMaxDuration();
+    int32 const remaining = m_duration;	//IVAN BATTAGLIA
+	
+	m_maxDuration = CalcMaxDuration();
     RefreshDuration();
     Unit* caster = GetCaster();
 

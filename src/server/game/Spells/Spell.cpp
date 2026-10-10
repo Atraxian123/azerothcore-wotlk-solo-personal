@@ -2149,6 +2149,10 @@ void Spell::SearchChainTargets(std::list<WorldObject*>& targets, uint32 chainTar
     if (m_spellInfo->JumpDistance > 0.0f)
         jumpRadius = m_spellInfo->JumpDistance;
 
+//IVAN BATTAGLIA aggiunto controllo se devo far saltare solo dal primo bersagio
+	bool const fromPrimary = m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_CHAIN_FROM_MAIN_TARGET);
+
+
     // chain lightning/heal spells and similar - allow to jump at larger distance and go out of los
     bool isBouncingFar = (m_spellInfo->HasAttribute(SPELL_ATTR4_BOUNCY_CHAIN_MISSILES)
                           || m_spellInfo->DmgClass == SPELL_DAMAGE_CLASS_NONE
@@ -2156,8 +2160,12 @@ void Spell::SearchChainTargets(std::list<WorldObject*>& targets, uint32 chainTar
 
     // max dist which spell can reach
     float searchRadius = jumpRadius;
-    if (isBouncingFar)
+
+//IVAN BATTAGLIA cambia il raggio solo se non deve chainare dal primario
+    if (isBouncingFar && !fromPrimary)
         searchRadius *= chainTargets;
+//    if (isBouncingFar)
+//        searchRadius *= chainTargets;
 
     WorldObject* chainSource = m_spellInfo->HasAttribute(SPELL_ATTR2_CHAIN_FROM_CASTER) ? m_caster : target;
     std::list<WorldObject*> tempTargets;
@@ -2208,8 +2216,11 @@ void Spell::SearchChainTargets(std::list<WorldObject*>& targets, uint32 chainTar
         if (foundItr == tempTargets.end())
             break;
 
-        if (!m_spellInfo->HasAttribute(SPELL_ATTR2_CHAIN_FROM_CASTER))
+//IVAN BATTAGLIA non cambiare il bersaglio da cui chaina
+        if (!m_spellInfo->HasAttribute(SPELL_ATTR2_CHAIN_FROM_CASTER) && !fromPrimary)
             chainSource = *foundItr;
+//        if (!m_spellInfo->HasAttribute(SPELL_ATTR2_CHAIN_FROM_CASTER))
+//            chainSource = *foundItr;
 
         targets.push_back(*foundItr);
         tempTargets.erase(foundItr);

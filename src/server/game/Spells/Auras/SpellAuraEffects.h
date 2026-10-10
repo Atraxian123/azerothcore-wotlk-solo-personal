@@ -117,6 +117,11 @@ public:
     void SetOldAmount(int32 amount) { m_oldAmount = amount; }
     void SetEnabled(bool enabled) { m_isAuraEnabled = enabled; }
 
+//IVAN BATTAGLIA periodic tick
+    void ResetPeriodic(bool resetPeriodicTimer = false) { if (resetPeriodicTimer) m_periodicTimer = m_amplitude; m_tickNumber = 0; m_partialTickDone = false; }
+    void ResetTicks() { m_tickNumber = 0; m_partialTickDone = false; }
+
+
 private:
     Aura* const m_base;
 
@@ -140,6 +145,9 @@ private:
     int32 m_periodicTimer;
     int32 m_amplitude;
     uint32 m_tickNumber;
+//IVAN BATTAGLIA partial tick
+    float m_tickScale = 1.0f;          // custom: scales the damage/heal of a single tick
+    bool m_partialTickDone = false;    // custom: partial last tick already fired
 
     uint8 const m_effIndex;
     bool m_canBeRecalculated;
@@ -147,6 +155,8 @@ private:
     bool m_isRecalculatingPassiveAuras = false;
 private:
     float CalcPeriodicCritChance(Unit const* caster, Unit const* target) const;
+//IVAN BATTAGLIA partial tick
+	void TryPartialLastTick(Unit* caster);
 
 public:
     // aura effect apply/remove handlers

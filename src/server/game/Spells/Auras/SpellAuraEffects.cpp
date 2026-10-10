@@ -961,6 +961,8 @@ void AuraEffect::Update(uint32 diff, Unit* caster)
                     PeriodicTick(*apptItr, caster);
         }
     }
+	//IVAN BATTAGLIA
+	TryPartialLastTick(caster);   // custom
 }
 
 void AuraEffect::UpdatePeriodic(Unit* caster)
@@ -6396,6 +6398,10 @@ void AuraEffect::HandlePeriodicDamageAurasTick(Unit* target, Unit* caster) const
         }
     }
 
+//IVAN BATTAGLIA partial last tick
+    // custom: partial last tick
+    damage = uint32(damage * m_tickScale);
+
     int32 dmg = damage;
     int32 mitigatedDamage = cleanDamage.mitigated_damage;
     if (CanApplyResilience())
@@ -6668,7 +6674,11 @@ void AuraEffect::HandlePeriodicHealAurasTick(Unit* target, Unit* caster) const
     LOG_DEBUG("spells.aura.effect", "PeriodicTick: {} heal of {} for {} health inflicted by {}",
                     GetCasterGUID().ToString(), target->GetGUID().ToString(), damage, GetId());
 
-    uint32 heal = uint32(damage);
+//IVAN BATTAGLIA partial tick
+    // custom: partial last tick
+    damage = int32(damage * m_tickScale);
+	
+	uint32 heal = uint32(damage);
 
     // Script Hook For HandlePeriodicDamageAurasTick -- Allow scripts to change the Damage pre class mitigation calculations
     sScriptMgr->ModifyPeriodicDamageAurasTick(target, caster, heal, GetSpellInfo());
@@ -7095,4 +7105,45 @@ int32 AuraEffect::GetTotalTicks() const
     }
 
     return totalTicks;
+}
+
+//IVAN BATTAGLIA partial ticks
+void AuraEffect::TryPartialLastTick(Unit* caster)
+{
+    if (!m_isPeriodic || m_partialTickDone || m_amplitude <= 0)
+        return;
+
+    if (!m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_PARTIAL_LAST_TICK))
+        return;
+
+    Aura* base = GetBase();
+    // only on natural expiry: the duration just reached 0 and the aura is still alive
+    if (base->IsPermanent() || base->IsRemoved() || base->GetDuration() != 0)
+        return;
+
+    switch (GetAuraType())
+    {
+        case SPELL_AURA_PERIODIC_DAMAGE:
+        case SPELL_AURA_PERIODIC_DAMAGE_PERCENT:
+        case SPELL_AURA_PERIODIC_HEAL:
+            break;
+        default:
+            return;
+    }
+
+    // m_periodicTimer = time until the next tick, so this much has passed since the last one
+    int32 const elapsed = m_amplitude - m_periodicTimer;
+    if (elapsed <= 0 || elapsed >= m_amplitude)
+        return;     // the last tick landed exactly on expiry, or ticks were capped: nothing to pay out
+
+    m_partialTickDone = true;
+    m_tickScale = float(elapsed) / float(m_amplitude);
+
+    std::list<AuraApplication*> effectApplications;
+    GetApplicationList(effectApplications);
+    for (AuraApplication* app : effectApplications)
+        if (app->HasEffect(GetEffIndex()))
+            PeriodicTick(app, caster);
+
+    m_tickScale = 1.0f;
 }

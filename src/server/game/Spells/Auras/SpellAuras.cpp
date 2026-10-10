@@ -358,6 +358,11 @@ Aura::Aura(SpellInfo const* spellproto, WorldObject* owner, Unit* caster, Item* 
     m_maxDuration = CalcMaxDuration(caster);
     m_duration = m_maxDuration;
     m_procCharges = CalcMaxCharges(caster);
+	//IVAN BATTAGLIA incremental charges
+	   // custom: start with a single charge, more are added on each reapplication
+    if (m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_INCREMENTAL_CHARGES) && m_procCharges > 1)
+        m_procCharges = 1;
+	//END
     m_isUsingCharges = m_procCharges != 0;
     memset(m_effects, 0, sizeof(m_effects));
     // m_casterLevel = cast item level/caster level, caster level should be saved to db, confirmed with sniffs
@@ -990,8 +995,22 @@ bool Aura::ModStackAmount(int32 num, AuraRemoveMode removeMode, bool periodicRes
         RefreshSpellMods();
         RefreshTimers(periodicReset);
 
+//IVAN BATTAGLIA
+        if (m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_INCREMENTAL_CHARGES))
+        {
+            // custom: +1 charge per reapplication, capped at max; at max only the duration refreshes
+            uint8 const maxCharges = CalcMaxCharges();
+            if (num > 0 && maxCharges > 0)
+                SetCharges(std::min<uint8>(m_procCharges + 1, maxCharges));
+        }
+        else
+        {
+            // reset charges
+            SetCharges(CalcMaxCharges());
+        }
+//END
         // reset charges
-        SetCharges(CalcMaxCharges());
+//        SetCharges(CalcMaxCharges());
     }
 
 //IVAN BATTAGLIA

@@ -8433,9 +8433,20 @@ void Spell::DoAllEffectOnLaunchTarget(TargetInfo& targetInfo, float* multiplier)
 					m_damageMultipliers[i] *= multiplier[i];				
 			//FINE
             }
+//IVAN BATTAGLIA 20% damage bonus from the back
+            // custom: +20% damage when the caster is behind the target
+            if (m_damage > 0 && unit != m_caster
+                && m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_BEHIND_TARGET_BONUS_DAMAGE)
+                && !unit->HasInArc(static_cast<float>(M_PI), m_caster))
+            {
+                constexpr float BEHIND_DAMAGE_BONUS = 1.2f;
+                m_damage = int32(m_damage * BEHIND_DAMAGE_BONUS);
+            }
+//FINE			
             targetInfo.damage += m_damage;
             targetInfo.damageBeforeTakenMods += m_damageBeforeTakenMods;
         }
+
     }
 
     // xinef: totem's inherit owner crit chance and dancing rune weapon

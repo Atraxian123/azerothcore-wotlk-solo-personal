@@ -4922,21 +4922,37 @@ void Spell::WriteAmmoToPacket(WorldPacket* data)
                 ammoDisplayID = pItem->GetTemplate()->DisplayInfoID;
             else
             {
-                uint32 ammoID = m_caster->ToPlayer()->GetUInt32Value(PLAYER_AMMO_ID);
-                if (ammoID)
+				//IVAN BATTAGLIA ammo display base
+                // custom: no ammo any more, so use a default projectile for the weapon type
+                switch (pItem->GetTemplate()->SubClass)
                 {
-                    ItemTemplate const* pProto = sObjectMgr->GetItemTemplate(ammoID);
-                    if (pProto)
-                    {
-                        ammoDisplayID = pProto->DisplayInfoID;
-                        ammoInventoryType = pProto->InventoryType;
-                    }
-                }
-                else if (m_caster->HasAura(46699))      // Requires No Ammo
-                {
-                    ammoDisplayID = 5996;                   // normal arrow
-                    ammoInventoryType = INVTYPE_AMMO;
-                }
+                    case ITEM_SUBCLASS_WEAPON_BOW:
+                    case ITEM_SUBCLASS_WEAPON_CROSSBOW:
+                        ammoDisplayID = 5996;           // arrow
+                        ammoInventoryType = INVTYPE_AMMO;
+                        break;
+                    case ITEM_SUBCLASS_WEAPON_GUN:
+                        ammoDisplayID = 5998;           // bullet
+                        ammoInventoryType = INVTYPE_AMMO;
+                        break;
+                    default:                            // wands and anything else: unchanged
+                        break;
+                }				
+            //    uint32 ammoID = m_caster->ToPlayer()->GetUInt32Value(PLAYER_AMMO_ID);
+            //    if (ammoID)
+            //    {
+            //        ItemTemplate const* pProto = sObjectMgr->GetItemTemplate(ammoID);
+            //        if (pProto)
+            //        {
+            //            ammoDisplayID = pProto->DisplayInfoID;
+            //            ammoInventoryType = pProto->InventoryType;
+            //        }
+            //    }
+            //    else if (m_caster->HasAura(46699))      // Requires No Ammo
+            //    {
+            //        ammoDisplayID = 5996;                   // normal arrow
+            //        ammoInventoryType = INVTYPE_AMMO;
+            //    }
             }
         }
     }
@@ -5360,32 +5376,33 @@ void Spell::TakePower()
 
 void Spell::TakeAmmo()
 {
-    if (m_attackType == RANGED_ATTACK && m_caster->IsPlayer() && !m_spellInfo->HasAttribute(SPELL_ATTR6_DO_NOT_CONSUME_RESOURCES))
-    {
-        Item* pItem = m_caster->ToPlayer()->GetWeaponForAttack(RANGED_ATTACK);
-
-        // wands don't have ammo
-        if (!pItem  || pItem->IsBroken() || pItem->GetTemplate()->SubClass == ITEM_SUBCLASS_WEAPON_WAND)
-            return;
-
-        if (pItem->GetTemplate()->InventoryType == INVTYPE_THROWN)
-        {
-            if (pItem->GetMaxStackCount() == 1)
-            {
-                // decrease durability for non-stackable throw weapon
-                m_caster->ToPlayer()->DurabilityPointLossForEquipSlot(EQUIPMENT_SLOT_RANGED);
-            }
-            else if (!sWorld->getBoolConfig(CONFIG_ENABLE_INFINITEAMMO))
-            {
-                // decrease items amount for stackable throw weapon
-                uint32 count = 1;
-                m_caster->ToPlayer()->DestroyItemCount(pItem, count, true);
-            }
-        }
-        else if (!sWorld->getBoolConfig(CONFIG_ENABLE_INFINITEAMMO))
-            if (uint32 ammo = m_caster->ToPlayer()->GetUInt32Value(PLAYER_AMMO_ID))
-                m_caster->ToPlayer()->DestroyItemCount(ammo, 1, true);
-    }
+	//IVAN BATTAGLIA rimuovo take ammo
+//    if (m_attackType == RANGED_ATTACK && m_caster->IsPlayer() && !m_spellInfo->HasAttribute(SPELL_ATTR6_DO_NOT_CONSUME_RESOURCES))
+//    {
+//        Item* pItem = m_caster->ToPlayer()->GetWeaponForAttack(RANGED_ATTACK);
+//
+//        // wands don't have ammo
+//        if (!pItem  || pItem->IsBroken() || pItem->GetTemplate()->SubClass == ITEM_SUBCLASS_WEAPON_WAND)
+//            return;
+//
+//        if (pItem->GetTemplate()->InventoryType == INVTYPE_THROWN)
+//        {
+//            if (pItem->GetMaxStackCount() == 1)
+//            {
+//                // decrease durability for non-stackable throw weapon
+//                m_caster->ToPlayer()->DurabilityPointLossForEquipSlot(EQUIPMENT_SLOT_RANGED);
+//            }
+//            else if (!sWorld->getBoolConfig(CONFIG_ENABLE_INFINITEAMMO))
+//            {
+//                // decrease items amount for stackable throw weapon
+//                uint32 count = 1;
+//                m_caster->ToPlayer()->DestroyItemCount(pItem, count, true);
+//            }
+//        }
+//        else if (!sWorld->getBoolConfig(CONFIG_ENABLE_INFINITEAMMO))
+//            if (uint32 ammo = m_caster->ToPlayer()->GetUInt32Value(PLAYER_AMMO_ID))
+//                m_caster->ToPlayer()->DestroyItemCount(ammo, 1, true);
+//    }
 }
 
 SpellCastResult Spell::CheckRuneCost(uint32 RuneCostID)
@@ -7672,64 +7689,66 @@ SpellCastResult Spell::CheckItems(uint32* param1, uint32* param2)
                     if (!pItem || pItem->IsBroken())
                         return SPELL_FAILED_EQUIPPED_ITEM;
 
-                    switch (pItem->GetTemplate()->SubClass)
-                    {
-                        case ITEM_SUBCLASS_WEAPON_THROWN:
-                            {
-                                uint32 ammo = pItem->GetEntry();
-                                if (!m_caster->ToPlayer()->HasItemCount(ammo))
-                                    return SPELL_FAILED_NO_AMMO;
-                            };
-                            break;
-                        case ITEM_SUBCLASS_WEAPON_GUN:
-                        case ITEM_SUBCLASS_WEAPON_BOW:
-                        case ITEM_SUBCLASS_WEAPON_CROSSBOW:
-                            {
-                                uint32 ammo = m_caster->ToPlayer()->GetUInt32Value(PLAYER_AMMO_ID);
-                                if (!ammo)
-                                {
-                                    // Requires No Ammo
-                                    if (m_caster->HasAura(46699))
-                                        break;                      // skip other checks
+				 //IVAN BATTAGLIA remove the need for ammo
 
-                                    return SPELL_FAILED_NO_AMMO;
-                                }
-
-                                ItemTemplate const* ammoProto = sObjectMgr->GetItemTemplate(ammo);
-                                if (!ammoProto)
-                                    return SPELL_FAILED_NO_AMMO;
-
-                                if (ammoProto->Class != ITEM_CLASS_PROJECTILE)
-                                    return SPELL_FAILED_NO_AMMO;
-
-                                // check ammo ws. weapon compatibility
-                                switch (pItem->GetTemplate()->SubClass)
-                                {
-                                    case ITEM_SUBCLASS_WEAPON_BOW:
-                                    case ITEM_SUBCLASS_WEAPON_CROSSBOW:
-                                        if (ammoProto->SubClass != ITEM_SUBCLASS_ARROW)
-                                            return SPELL_FAILED_NO_AMMO;
-                                        break;
-                                    case ITEM_SUBCLASS_WEAPON_GUN:
-                                        if (ammoProto->SubClass != ITEM_SUBCLASS_BULLET)
-                                            return SPELL_FAILED_NO_AMMO;
-                                        break;
-                                    default:
-                                        return SPELL_FAILED_NO_AMMO;
-                                }
-
-                                if (!m_caster->ToPlayer()->HasItemCount(ammo))
-                                {
-                                    m_caster->ToPlayer()->SetUInt32Value(PLAYER_AMMO_ID, 0);
-                                    return SPELL_FAILED_NO_AMMO;
-                                }
-                            };
-                            break;
-                        case ITEM_SUBCLASS_WEAPON_WAND:
-                            break;
-                        default:
-                            break;
-                    }
+                    //switch (pItem->GetTemplate()->SubClass)
+                    //{
+                    //    case ITEM_SUBCLASS_WEAPON_THROWN:
+                    //        {
+                    //            uint32 ammo = pItem->GetEntry();
+                    //            if (!m_caster->ToPlayer()->HasItemCount(ammo))
+                    //                return SPELL_FAILED_NO_AMMO;
+                    //        };
+                    //        break;
+                    //    case ITEM_SUBCLASS_WEAPON_GUN:
+                    //    case ITEM_SUBCLASS_WEAPON_BOW:
+                    //    case ITEM_SUBCLASS_WEAPON_CROSSBOW:
+                    //        {
+                    //            uint32 ammo = m_caster->ToPlayer()->GetUInt32Value(PLAYER_AMMO_ID);
+                    //            if (!ammo)
+                    //            {
+                    //                // Requires No Ammo
+                    //                if (m_caster->HasAura(46699))
+                    //                    break;                      // skip other checks
+					//
+                    //                return SPELL_FAILED_NO_AMMO;
+                    //            }
+					//
+                    //            ItemTemplate const* ammoProto = sObjectMgr->GetItemTemplate(ammo);
+                    //            if (!ammoProto)
+                    //                return SPELL_FAILED_NO_AMMO;
+					//
+                    //            if (ammoProto->Class != ITEM_CLASS_PROJECTILE)
+                    //                return SPELL_FAILED_NO_AMMO;
+					//
+                    //            // check ammo ws. weapon compatibility
+                    //            switch (pItem->GetTemplate()->SubClass)
+                    //            {
+                    //                case ITEM_SUBCLASS_WEAPON_BOW:
+                    //                case ITEM_SUBCLASS_WEAPON_CROSSBOW:
+                    //                    if (ammoProto->SubClass != ITEM_SUBCLASS_ARROW)
+                    //                        return SPELL_FAILED_NO_AMMO;
+                    //                    break;
+                    //                case ITEM_SUBCLASS_WEAPON_GUN:
+                    //                    if (ammoProto->SubClass != ITEM_SUBCLASS_BULLET)
+                    //                        return SPELL_FAILED_NO_AMMO;
+                    //                    break;
+                    //                default:
+                    //                    return SPELL_FAILED_NO_AMMO;
+                    //            }
+					//
+                    //            if (!m_caster->ToPlayer()->HasItemCount(ammo))
+                    //            {
+                    //                m_caster->ToPlayer()->SetUInt32Value(PLAYER_AMMO_ID, 0);
+                    //                return SPELL_FAILED_NO_AMMO;
+                    //            }
+                    //        };
+                    //        break;
+                    //    case ITEM_SUBCLASS_WEAPON_WAND:
+                    //        break;
+                    //    default:
+                    //        break;
+                    //}
                     break;
                 }
             case SPELL_EFFECT_CREATE_MANA_GEM:

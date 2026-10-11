@@ -7691,28 +7691,29 @@ void Player::_ApplyAllLevelScaleItemMods(bool apply)
 
 void Player::_ApplyAmmoBonuses()
 {
+	//IVAN BATTAGLIA no ammo bonus (now baked into weapons)
     // check ammo
-    uint32 ammo_id = GetUInt32Value(PLAYER_AMMO_ID);
-    if (!ammo_id)
-        return;
-
-    float currentAmmoDPS;
-
-    ItemTemplate const* ammo_proto = sObjectMgr->GetItemTemplate(ammo_id);
-    if (!ammo_proto || ammo_proto->Class != ITEM_CLASS_PROJECTILE || !CheckAmmoCompatibility(ammo_proto))
-        currentAmmoDPS = 0.0f;
-    else
-        currentAmmoDPS = (ammo_proto->Damage[0].DamageMin + ammo_proto->Damage[0].DamageMax) / 2;
-
-    sScriptMgr->OnPlayerApplyAmmoBonuses(this, ammo_proto, currentAmmoDPS);
-
-    if (currentAmmoDPS == GetAmmoDPS())
-        return;
-
-    m_ammoDPS = currentAmmoDPS;
-
-    if (CanModifyStats())
-        UpdateDamagePhysical(RANGED_ATTACK);
+//    uint32 ammo_id = GetUInt32Value(PLAYER_AMMO_ID);
+//    if (!ammo_id)
+//        return;
+//
+//    float currentAmmoDPS;
+//
+//    ItemTemplate const* ammo_proto = sObjectMgr->GetItemTemplate(ammo_id);
+//    if (!ammo_proto || ammo_proto->Class != ITEM_CLASS_PROJECTILE || !CheckAmmoCompatibility(ammo_proto))
+//        currentAmmoDPS = 0.0f;
+//    else
+//        currentAmmoDPS = (ammo_proto->Damage[0].DamageMin + ammo_proto->Damage[0].DamageMax) / 2;
+//
+//    sScriptMgr->OnPlayerApplyAmmoBonuses(this, ammo_proto, currentAmmoDPS);
+//
+//    if (currentAmmoDPS == GetAmmoDPS())
+//        return;
+//
+//    m_ammoDPS = currentAmmoDPS;
+//
+//    if (CanModifyStats())
+//        UpdateDamagePhysical(RANGED_ATTACK);
 }
 
 bool Player::CheckAmmoCompatibility(ItemTemplate const* ammo_proto) const

@@ -2564,24 +2564,26 @@ InventoryResult Player::CanUseAmmo(uint32 item) const
 
 void Player::SetAmmo(uint32 item)
 {
-    if (!item)
-        return;
-
-    // already set
-    if (GetUInt32Value(PLAYER_AMMO_ID) == item)
-        return;
-
-    // check ammo
-    InventoryResult msg = CanUseAmmo(item);
-    if (msg != EQUIP_ERR_OK)
-    {
-        SendEquipError(msg, nullptr, nullptr, item);
-        return;
-    }
-
-    SetUInt32Value(PLAYER_AMMO_ID, item);
-
-    _ApplyAmmoBonuses();
+//IVAN BATTAGLIA rimuovo ammo 
+(void)item;
+//   if (!item)
+//        return;
+//
+//    // already set
+//    if (GetUInt32Value(PLAYER_AMMO_ID) == item)
+//        return;
+//
+//    // check ammo
+//    InventoryResult msg = CanUseAmmo(item);
+//    if (msg != EQUIP_ERR_OK)
+//    {
+//        SendEquipError(msg, nullptr, nullptr, item);
+//        return;
+//    }
+//
+//    SetUInt32Value(PLAYER_AMMO_ID, item);
+//
+//    _ApplyAmmoBonuses();
 }
 
 void Player::RemoveAmmo()

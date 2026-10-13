@@ -123,7 +123,9 @@ public:
 //IVAN BATTAGLIA DoT / HoT rollover
     int32 m_carriedTotal = 0;          // custom: total amount still owed by the previous application
 	void CaptureRemainingPeriodic();
-
+//IVAN BATTAGLIA DoT chain multiplier
+    float m_chainScale = 1.0f;         // custom: chain drop applied to this effect's own amount (not to carried-over damage)
+    void SetChainScale(float scale);
 
 private:
     Aura* const m_base;

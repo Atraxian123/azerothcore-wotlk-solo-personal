@@ -579,6 +579,11 @@ int32 AuraEffect::CalculateAmount(Unit* caster)
 
     amount *= GetBase()->GetStackAmount();
 
+//IVAN BATTAGLIA DoT Chain Multiplier
+    // custom: chain drop applies to this application's own amount only, never to carried-over damage
+    if (m_chainScale != 1.0f)
+        amount = int32(amount * m_chainScale);
+
 //IVAN BATTAGLIA DoT / HoT rollover
     // custom: spread what the previous application still owed over the new application's ticks
     if (m_carriedTotal > 0)
@@ -7182,4 +7187,28 @@ void AuraEffect::CaptureRemainingPeriodic()
 
     int64 const total = int64(m_amount) * remainingTicks;
     m_carriedTotal = int32(std::min<int64>(total, 0x7FFFFFFF));
+}
+
+//IVAN BATTAGLIA DoT chain multiplier
+// custom: apply the chain multiplier of the current target to a periodic damage / healing effect
+void AuraEffect::SetChainScale(float scale)
+{
+    if (scale == m_chainScale)
+        return;
+
+    switch (GetAuraType())
+    {
+        case SPELL_AURA_PERIODIC_DAMAGE:
+        case SPELL_AURA_PERIODIC_HEAL:
+            break;
+        default:
+            return;
+    }
+
+    Unit* caster = GetCaster();
+    if (!caster)
+        return;
+
+    m_chainScale = scale;
+    ChangeAmount(CalculateAmount(caster), false);
 }

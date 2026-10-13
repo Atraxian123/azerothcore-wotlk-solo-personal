@@ -2666,7 +2666,8 @@ void Spell::DoAllEffectOnTarget(TargetInfo* target)
             m_reflectionTargetPosition = Position();
         }
 
-        SpellMissInfo missInfo2 = DoSpellHitOnUnit(spellHitTarget, mask, target->scaleAura);
+        //SpellMissInfo missInfo2 = DoSpellHitOnUnit(spellHitTarget, mask, target->scaleAura);
+		SpellMissInfo missInfo2 = DoSpellHitOnUnit(spellHitTarget, mask, target->scaleAura, target->chainMultiplier);//IVAN BATTAGLIA chain multiplier on DoT
 
         m_reflectionTarget = nullptr;
         m_reflectionTargetGuid.Clear();
@@ -2974,7 +2975,8 @@ void Spell::DoAllEffectOnTarget(TargetInfo* target)
     }
 }
 
-SpellMissInfo Spell::DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleAura)
+//SpellMissInfo Spell::DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleAura)
+SpellMissInfo Spell::DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleAura, float const* chainMultiplier)//IVAN BATTAGLIA chain multiplier on DoT
 {
     if (!unit || !effectMask)
         return SPELL_MISS_EVADE;
@@ -3202,6 +3204,17 @@ SpellMissInfo Spell::DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleA
                     // xinef: apply relic cooldown, imo best place to add this
                     if (m_CastItem && m_CastItem->GetTemplate()->InventoryType == INVTYPE_RELIC && m_triggeredByAuraSpell)
                         m_caster->AddSpellCooldown(SPELL_RELIC_COOLDOWN, m_CastItem->GetEntry(), duration);
+
+//IVAN BATTAGLIA DoT chain multiplier
+                    // custom: apply the chain drop to DoT / HoT amounts as well
+                    if (chainMultiplier && m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_CHAIN_DROP_ON_PERIODIC))
+                    {
+                        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+                            if ((effectMask & (1 << i)) && (m_applyMultiplierMask & (1 << i)))
+                                if (AuraEffect* aurEff = m_spellAura->GetEffect(i))
+                                    aurEff->SetChainScale(chainMultiplier[i]);
+                    }
+//END
 
                     m_spellAura->SetTriggeredByAuraSpellInfo(m_triggeredByAuraSpell.spellInfo);
                     m_spellAura->_RegisterForTargets();
@@ -8423,7 +8436,8 @@ void Spell::DoAllEffectOnLaunchTarget(TargetInfo& targetInfo, float* multiplier)
                 if (m_spellInfo->HasAttribute(SPELL_ATTR0_CU2_CHAIN_HALVE_AFTER_FIFTH)
                     && m_chainHitCount[i] >= CHAIN_HALVE_AFTER_TARGET)
                     chainMult *= 0.5f;				
-//FINE				
+//FINE			
+				targetInfo.chainMultiplier[i] = m_damageMultipliers[i]; //IVAN BATTAGLIA DoT chain reduction
                 m_damage = int32(m_damage * m_damageMultipliers[i]);
 //IVAN BATTAGLIA aggiungo caso di moltiplicatore singolo per il chain				
                 //m_damageMultipliers[i] *= multiplier[i];

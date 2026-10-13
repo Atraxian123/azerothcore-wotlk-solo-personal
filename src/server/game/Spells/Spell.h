@@ -276,6 +276,7 @@ struct TargetInfo
     bool   scaleAura:1;
     int32  damage;
     int32  damageBeforeTakenMods;
+	float  chainMultiplier[3] = { 1.0f, 1.0f, 1.0f };//IVAN BATTAGLIA DoT chain effect
 };
 
 static const uint32 SPELL_INTERRUPT_NONPLAYER = 32747;
@@ -732,7 +733,8 @@ public:
     void AddDestTarget(SpellDestination const& dest, uint32 effIndex);
 
     void DoAllEffectOnTarget(TargetInfo* target);
-    SpellMissInfo DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleAura);
+    //SpellMissInfo DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleAura);
+	SpellMissInfo DoSpellHitOnUnit(Unit* unit, uint32 effectMask, bool scaleAura, float const* chainMultiplier = nullptr);//IVAN BATTAGLIA DoT chain implementation
     void DoTriggersOnSpellHit(Unit* unit, uint8 effMask);
     void DoAllEffectOnTarget(GOTargetInfo* target);
     void DoAllEffectOnTarget(ItemTargetInfo* target);

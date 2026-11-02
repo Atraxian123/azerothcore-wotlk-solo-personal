@@ -984,7 +984,7 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
 
     uint8 itemsShown = 0;
 
-    b << uint32(l.gold);                                    //gold
+    b << uint32(l.gold + lv.extraGold);                     //gold (AoE loot adds the gold of nearby corpses)
 
     std::size_t count_pos = b.wpos();                            // pos of item count byte
     b << uint8(0);                                          // item count placeholder
@@ -1221,6 +1221,18 @@ ByteBuffer& operator<<(ByteBuffer& b, LootView const& lv)
                     b << uint8(slotType);
                 ++itemsShown;
             }
+        }
+    }
+
+    // AoE loot: items borrowed from nearby corpses, in virtual slots after the real ones
+    if (lv.extraItems)
+    {
+        for (LootViewExtraItem const& extra : *lv.extraItems)
+        {
+            b << extra.slot;
+            b << *extra.item;
+            b << uint8(slotType);
+            ++itemsShown;
         }
     }
 

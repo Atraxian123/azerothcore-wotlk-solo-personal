@@ -27,6 +27,7 @@
 #include "Opcodes.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+#include "World.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
@@ -94,6 +95,44 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
     }
 
     sScriptMgr->OnPlayerAfterCreatureLoot(player);
+
+    // AoE loot: slots after the real ones belong to other corpses around the player
+    if (lguid.IsCreatureOrVehicle())
+    {
+        if (Player::AoELootEntry const* aoeEntry = player->GetAoELootEntry(lootSlot))
+        {
+            Creature* source = aoeEntry->itemId ? player->GetMap()->GetCreature(aoeEntry->sourceGUID) : nullptr;
+            float const maxDist = sWorld->getFloatConfig(CONFIG_AOE_LOOT_RADIUS) + INTERACTION_DISTANCE;
+
+            // the corpse must still be lootable, in range, and still hold the item that was advertised
+            LootItem* advertised = nullptr;
+            if (source && !source->IsAlive() && source->HasDynamicFlag(UNIT_DYNFLAG_LOOTABLE) && source->IsWithinDist(player, maxDist))
+                advertised = source->loot.LootItemInSlot(aoeEntry->sourceSlot, player);
+
+            if (!advertised || advertised->itemid != aoeEntry->itemId)
+            {
+                // stale entry: drop it from the window
+                player->SendEquipError(EQUIP_ERR_ALREADY_LOOTED, nullptr, nullptr);
+                player->SendNotifyLootItemRemoved(lootSlot);
+                player->InvalidateAoELootEntry(lootSlot);
+                return;
+            }
+
+            // StoreLootItem notifies with the slot index of the source corpse, which means nothing
+            // in this window: mute it and send the virtual slot ourselves
+            InventoryResult aoeMsg;
+            player->SetAoEPickupInProgress(true);
+            LootItem* taken = player->StoreLootItem(aoeEntry->sourceSlot, &source->loot, aoeMsg);
+            player->SetAoEPickupInProgress(false);
+
+            if (taken && aoeMsg == EQUIP_ERR_OK)
+            {
+                player->SendNotifyLootItemRemoved(lootSlot);
+                player->InvalidateAoELootEntry(lootSlot);
+            }
+            return;
+        }
+    }
 
     InventoryResult msg;
     LootItem* lootItem = player->StoreLootItem(lootSlot, loot, msg);
@@ -175,6 +214,26 @@ void WorldSession::HandleLootMoneyOpcode(WorldPacket& /*recvData*/)
             }
         default:
             return;                                         // unlootable type
+    }
+
+    // AoE loot: pull the gold of the nearby corpses shown in this window into the corpse being looted
+    if (loot && guid.IsCreatureOrVehicle() && loot->loot_type == LOOT_CORPSE)
+    {
+        float const maxDist = sWorld->getFloatConfig(CONFIG_AOE_LOOT_RADIUS) + INTERACTION_DISTANCE;
+        for (ObjectGuid const& sourceGuid : player->GetAoEGoldSources())
+        {
+            Creature* source = player->GetMap()->GetCreature(sourceGuid);
+            if (!source || source->IsAlive() || !source->HasDynamicFlag(UNIT_DYNFLAG_LOOTABLE) || !source->IsWithinDist(player, maxDist))
+                continue;
+
+            Loot& sourceLoot = source->loot;
+            if (!sourceLoot.gold || (sourceLoot.loot_type != LOOT_NONE && sourceLoot.loot_type != LOOT_CORPSE))
+                continue;
+
+            loot->gold += sourceLoot.gold;
+            sourceLoot.gold = 0;
+            sourceLoot.NotifyMoneyRemoved();   // tell anyone else looking at that corpse
+        }
     }
 
     if (loot)
@@ -272,6 +331,10 @@ void WorldSession::DoLootRelease(ObjectGuid lguid)
     Player*  player = GetPlayer();
     Loot*    loot;
 
+    // AoE loot: other corpses that were shown in this window
+    std::vector<Player::AoELootEntry> aoeEntries = player->TakeAoELootEntries();
+    std::vector<ObjectGuid> aoeGoldSources = player->TakeAoEGoldSources();
+
     player->SetLootGUID(ObjectGuid::Empty);
     player->SendLootRelease(lguid);
 
@@ -279,6 +342,40 @@ void WorldSession::DoLootRelease(ObjectGuid lguid)
 
     if (!player->IsInWorld())
         return;
+
+    // Release those corpses the same way a directly looted corpse is released
+    GuidSet aoeSources;
+    for (Player::AoELootEntry const& entry : aoeEntries)
+        aoeSources.insert(entry.sourceGUID);
+    for (ObjectGuid const& goldGuid : aoeGoldSources)
+        aoeSources.insert(goldGuid);
+
+    for (ObjectGuid const& sourceGuid : aoeSources)
+    {
+        Creature* source = player->GetMap()->GetCreature(sourceGuid);
+        if (!source || source->IsAlive() || !source->HasDynamicFlag(UNIT_DYNFLAG_LOOTABLE))
+            continue;
+
+        Loot* sourceLoot = &source->loot;
+        if (sourceLoot->isLooted())
+        {
+            source->AllLootRemovedFromCorpse();
+            source->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+            sourceLoot->clear();
+        }
+        else
+        {
+            if (player->GetGUID() == sourceLoot->roundRobinPlayer)
+            {
+                sourceLoot->roundRobinPlayer.Clear();
+
+                if (Group* group = player->GetGroup())
+                    group->SendLooter(source, nullptr);
+            }
+
+            source->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
+        }
+    }
 
     if (lguid.IsGameObject())
     {

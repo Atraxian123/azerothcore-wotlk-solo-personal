@@ -71,6 +71,7 @@
 #    CUSTOM
 #    DEBUG
 #    DYNAMIC RESPAWN SETTINGS
+#    AOE LOOT
 #
 ###################################################################################################
 
@@ -4834,6 +4835,31 @@ Respawn.DynamicEscortNPC = 0
 #        Default:     0 - (Disabled, spawn groups control respawn mode)
 
 Respawn.ForceCompatibilityMode = 0
+
+#
+###################################################################################################
+
+###################################################################################################
+# AOE LOOT
+#
+#    Enabled
+#        Description: When enabled, looting a corpse also lists in the loot window the items and gold of
+#                     every other lootable corpse within AoELootRadius yards that the player is
+#                     allowed to loot. Taking such an item removes it from its own corpse.
+#                     Plain items, the player's quest items and gold are merged; corpses using
+#                     group loot, need before greed or master loot are skipped.
+#        Default:     1 - (Enabled)
+#                     0 - (Disabled)
+
+[AoE Loot]
+Enabled = 1
+
+#
+#    AoELootRadius
+#        Description: Radius in yards around the player in which other corpses are merged.
+#        Default:     15
+
+AoELootRadius = 15
 
 #
 ###################################################################################################

@@ -21,6 +21,8 @@
 void WorldConfig::BuildConfigCache()
 {
     SetConfigValue<bool>(CONFIG_ALLOW_TICKETS, "AllowTickets", true);
+    SetConfigValue<bool>(CONFIG_AOE_LOOT_ENABLED, "Enabled", false, ConfigValueCache::Reloadable::Yes);
+    SetConfigValue<float>(CONFIG_AOE_LOOT_RADIUS, "AoELootRadius", 15.0f, ConfigValueCache::Reloadable::Yes, [](float const& value) { return value > 0.0f; }, "> 0");
     SetConfigValue<bool>(CONFIG_DELETE_CHARACTER_TICKET_TRACE, "DeletedCharacterTicketTrace", false);
 
     ///- Send server info on login?

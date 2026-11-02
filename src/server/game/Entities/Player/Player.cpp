@@ -7842,6 +7842,11 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     if (ObjectGuid lguid = GetLootGUID())
         m_session->DoLootRelease(lguid);
 
+    m_aoeLootEntries.clear();
+    m_aoeGoldSources.clear();
+    m_aoeLootSlotBase = 0;
+    Creature* aoePrimary = nullptr;
+
     Loot* loot = 0;
     PermissionTypes permission = ALL_PERMISSION;
 
@@ -8064,6 +8069,7 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
         }
 
         loot = &creature->loot;
+        aoePrimary = creature;
 
         if (loot_type == LOOT_PICKPOCKETING)
         {
@@ -8213,10 +8219,17 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     {
         SetLootGUID(guid);
 
+        // AoE loot: borrow the items of nearby corpses (plain corpse loot only)
+        std::vector<LootViewExtraItem> aoeItems;
+        uint32 aoeGold = 0;
+        if (aoePrimary && loot_type == LOOT_CORPSE &&
+            (permission == OWNER_PERMISSION || permission == ALL_PERMISSION || permission == ROUND_ROBIN_PERMISSION))
+            BuildAoELoot(aoePrimary, loot, permission, aoeItems, aoeGold);
+
         WorldPacket data(SMSG_LOOT_RESPONSE, (9 + 50));         // we guess size
         data << guid;
         data << uint8(loot_type);
-        data << LootView(*loot, this, permission);
+        data << LootView(*loot, this, permission, aoeItems.empty() ? nullptr : &aoeItems, aoeGold);
 
         SendDirectMessage(&data);
 
@@ -8228,6 +8241,100 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     }
     else
         SendLootError(guid, LOOT_ERROR_DIDNT_KILL);
+}
+
+// AoE loot: collect the items of all other lootable corpses around the player. They are shown in
+// virtual slots placed after the real slots of the corpse being looted.
+void Player::BuildAoELoot(Creature* primary, Loot* primaryLoot, PermissionTypes /*permission*/, std::vector<LootViewExtraItem>& extraItems, uint32& extraGold)
+{
+    m_aoeLootEntries.clear();
+    m_aoeGoldSources.clear();
+    extraGold = 0;
+    m_aoeLootSlotBase = 0;
+
+    if (!sWorld->getBoolConfig(CONFIG_AOE_LOOT_ENABLED))
+        return;
+
+    uint32 const base = primaryLoot->GetMaxSlotInLootFor(this);
+    // the client cannot show more than MAX_NR_LOOT_ITEMS slots; gold takes no slot
+    uint32 room = base < MAX_NR_LOOT_ITEMS ? MAX_NR_LOOT_ITEMS - base : 0;
+
+    std::list<Creature*> corpses;
+    GetDeadCreatureListInGrid(corpses, sWorld->getFloatConfig(CONFIG_AOE_LOOT_RADIUS));
+    corpses.sort([this](Creature const* a, Creature const* b) { return GetExactDistSq(a) < GetExactDistSq(b); });
+
+    m_aoeLootSlotBase = uint8(base);
+
+    for (Creature* corpse : corpses)
+    {
+        if (!corpse || corpse == primary || corpse->IsAlive() || !corpse->HasDynamicFlag(UNIT_DYNFLAG_LOOTABLE))
+            continue;
+
+        Loot& l = corpse->loot;
+        // untouched corpse (NONE) or plain corpse loot; skip skinning / pickpocket loot
+        if (l.loot_type != LOOT_NONE && l.loot_type != LOOT_CORPSE)
+            continue;
+
+        // same permission rules as a direct loot, restricted to the cases that need no rolls
+        Group* recipientGroup = corpse->GetLootRecipientGroup();
+        if (recipientGroup)
+        {
+            if (GetGroup() != recipientGroup)
+                continue;
+
+            switch (recipientGroup->GetLootMethod())
+            {
+                case FREE_FOR_ALL:
+                    break;
+                case ROUND_ROBIN:
+                    if (l.roundRobinPlayer && l.roundRobinPlayer != GetGUID())
+                        continue;
+                    break;
+                default: // group loot, need before greed, master loot
+                    continue;
+            }
+        }
+        else if (corpse->GetLootRecipient() != this)
+            continue;
+
+        if (l.gold)
+        {
+            extraGold += l.gold;
+            m_aoeGoldSources.push_back(corpse->GetGUID());
+        }
+
+        for (uint8 i = 0; i < l.items.size() && room; ++i)
+        {
+            LootItem const& item = l.items[i];
+            if (item.is_looted || item.freeforall || !item.conditions.empty() || item.is_blocked || item.rollWinnerGUID)
+                continue;
+
+            if (!item.AllowedForPlayer(this, l.sourceWorldObjectGUID))
+                continue;
+
+            extraItems.push_back({ uint8(base + m_aoeLootEntries.size()), &item });
+            m_aoeLootEntries.push_back({ corpse->GetGUID(), i, item.itemid });
+            --room;
+        }
+
+        // quest items of this player
+        QuestItemMap const& questItems = l.GetPlayerQuestItems();
+        QuestItemMap::const_iterator qitr = questItems.find(GetGUID());
+        if (qitr != questItems.end())
+        {
+            for (std::size_t qi = 0; qi < qitr->second->size() && room; ++qi)
+            {
+                QuestItem const& qitem = (*qitr->second)[qi];
+                LootItem const& item = l.quest_items[qitem.index];
+                if (qitem.is_looted || item.is_looted || item.follow_loot_rules || !HasQuestForItem(item.itemid))
+                    continue;
+
+                extraItems.push_back({ uint8(base + m_aoeLootEntries.size()), &item });
+                m_aoeLootEntries.push_back({ corpse->GetGUID(), uint8(l.items.size() + qi), item.itemid });
+                --room;
+            }
+        }
+    }
 }
 
 void Player::SendLootError(ObjectGuid guid, LootError error)
@@ -8247,6 +8354,10 @@ void Player::SendNotifyLootMoneyRemoved()
 
 void Player::SendNotifyLootItemRemoved(uint8 lootSlot)
 {
+    // AoE pickup: the slot index is relative to another corpse, the handler sends the right one
+    if (m_aoePickupInProgress)
+        return;
+
     WorldPacket data(SMSG_LOOT_REMOVED, 1);
     data << uint8(lootSlot);
     SendDirectMessage(&data);

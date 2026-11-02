@@ -401,13 +401,22 @@ private:
     LootValidatorRefMgr i_LootValidatorRefMgr;
 };
 
+// Item borrowed from another corpse (AoE loot), shown in a virtual slot after the real ones
+struct LootViewExtraItem
+{
+    uint8 slot;
+    LootItem const* item;
+};
+
 struct LootView
 {
     Loot& loot;
     Player* viewer;
     PermissionTypes permission;
-    LootView(Loot& _loot, Player* _viewer, PermissionTypes _permission = ALL_PERMISSION)
-        : loot(_loot), viewer(_viewer), permission(_permission) {}
+    std::vector<LootViewExtraItem> const* extraItems;
+    uint32 extraGold;
+    LootView(Loot& _loot, Player* _viewer, PermissionTypes _permission = ALL_PERMISSION, std::vector<LootViewExtraItem> const* _extraItems = nullptr, uint32 _extraGold = 0)
+        : loot(_loot), viewer(_viewer), permission(_permission), extraItems(_extraItems), extraGold(_extraGold) {}
 };
 
 extern LootStore LootTemplates_Creature;

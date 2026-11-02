@@ -2018,6 +2018,23 @@ public:
     [[nodiscard]] ObjectGuid GetLootGUID() const { return m_lootGuid; }
     void SetLootGUID(ObjectGuid guid) { m_lootGuid = guid; }
 
+    // AoE loot: items of nearby corpses shown in the window of the corpse being looted
+    struct AoELootEntry
+    {
+        ObjectGuid sourceGUID;   // corpse the item really lives in
+        uint8 sourceSlot;        // slot of the item inside that corpse's Loot
+        uint32 itemId;           // sanity check against stale entries
+    };
+    void BuildAoELoot(Creature* primary, Loot* primaryLoot, PermissionTypes permission, std::vector<LootViewExtraItem>& extraItems, uint32& extraGold);
+    [[nodiscard]] std::vector<ObjectGuid> const& GetAoEGoldSources() const { return m_aoeGoldSources; }
+    [[nodiscard]] bool IsAoELootSlot(uint8 slot) const { return slot >= m_aoeLootSlotBase && (slot - m_aoeLootSlotBase) < m_aoeLootEntries.size(); }
+    [[nodiscard]] uint8 GetAoELootSlotBase() const { return m_aoeLootSlotBase; }
+    [[nodiscard]] AoELootEntry const* GetAoELootEntry(uint8 slot) const { return IsAoELootSlot(slot) ? &m_aoeLootEntries[slot - m_aoeLootSlotBase] : nullptr; }
+    void InvalidateAoELootEntry(uint8 slot) { if (IsAoELootSlot(slot)) m_aoeLootEntries[slot - m_aoeLootSlotBase].itemId = 0; }
+    void SetAoEPickupInProgress(bool v) { m_aoePickupInProgress = v; }
+    std::vector<ObjectGuid> TakeAoEGoldSources() { std::vector<ObjectGuid> out; out.swap(m_aoeGoldSources); return out; }
+    std::vector<AoELootEntry> TakeAoELootEntries() { std::vector<AoELootEntry> out; out.swap(m_aoeLootEntries); return out; }
+
     void RemovedInsignia(Player* looterPlr);
 
     [[nodiscard]] WorldSession* GetSession() const { return m_session; }
@@ -2824,6 +2841,10 @@ protected:
 
     void outDebugValues() const;
     ObjectGuid m_lootGuid;
+    std::vector<AoELootEntry> m_aoeLootEntries;
+    std::vector<ObjectGuid> m_aoeGoldSources;   // corpses whose gold is merged into the window
+    uint8 m_aoeLootSlotBase{0};
+    bool m_aoePickupInProgress{false};
 
     TeamId m_team;
     uint32 m_nextSave; // pussywizard

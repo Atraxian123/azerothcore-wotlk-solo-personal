@@ -2124,27 +2124,28 @@ void Spell::SearchAreaTargets(std::list<WorldObject*>& targets, float range, Pos
 void Spell::SearchChainTargets(std::list<WorldObject*>& targets, uint32 chainTargets, WorldObject* target, SpellTargetObjectTypes objectType, SpellTargetCheckTypes selectType, SpellTargetSelectionCategories  /*selectCategory*/, ConditionList* condList, bool isChainHeal)
 {
     // max dist for jump target selection
-    float jumpRadius = 0.0f;
-    switch (m_spellInfo->DmgClass)
-    {
-        case SPELL_DAMAGE_CLASS_RANGED:
-            // 7.5y for multi shot
-            jumpRadius = 7.5f;
-            break;
-        case SPELL_DAMAGE_CLASS_MELEE:
-            // 10y for swipe, cleave and similar
-            jumpRadius = 10.0f;
-            break;
-        case SPELL_DAMAGE_CLASS_NONE:
-        case SPELL_DAMAGE_CLASS_MAGIC:
-            // 12.5y for chain heal spell since 3.2 patch
-            if (isChainHeal)
-                jumpRadius = 12.5f;
-            // 10y as default for magic chain spells
-            else
-                jumpRadius = 10.0f;
-            break;
-    }
+    //float jumpRadius = 0.0f;
+	float jumpRadius = 12.5f;	//IVAN BATTAGLIA flat jump radius
+ //   switch (m_spellInfo->DmgClass)
+ //   {
+ //       case SPELL_DAMAGE_CLASS_RANGED:
+ //           // 7.5y for multi shot
+ //           jumpRadius = 7.5f;
+ //           break;
+ //       case SPELL_DAMAGE_CLASS_MELEE:
+ //           // 10y for swipe, cleave and similar
+ //           jumpRadius = 10.0f;
+ //           break;
+ //       case SPELL_DAMAGE_CLASS_NONE:
+ //       case SPELL_DAMAGE_CLASS_MAGIC:
+ //           // 12.5y for chain heal spell since 3.2 patch
+ //           if (isChainHeal)
+ //               jumpRadius = 12.5f;
+ //           // 10y as default for magic chain spells
+ //           else
+ //               jumpRadius = 10.0f;
+ //           break;
+ //   }
 
     // per-spell override from spell_jump_distance table
     if (m_spellInfo->JumpDistance > 0.0f)

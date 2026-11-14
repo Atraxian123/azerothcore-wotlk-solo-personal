@@ -18,6 +18,7 @@
 #define _CRT_SECURE_NO_DEPRECATE
 #include <cerrno>
 #include <cstdio>
+#include <iostream>
 #include <list>
 #include <map>
 #include <sys/stat.h>
@@ -202,6 +203,50 @@ bool ExtractSingleWmo(std::string& fname)
     return true;
 }
 
+// Interactive per-map confirmation: always on
+// Returns true when the map should be processed. Answers: y/Enter = yes, n = no,
+// a = yes for all remaining maps, s = skip all remaining maps. End of input counts as "a".
+bool AskExtractMap(uint32 id, char const* name)
+{
+    static int mode = 0;    // 0 = ask, 1 = all remaining, 2 = skip remaining
+    if (mode == 1)
+        return true;
+    if (mode == 2)
+        return false;
+
+    for (;;)
+    {
+        printf("Extract map %u (%s)? [Y]es / [n]o / [a]ll remaining / [s]kip remaining: ", id, name);
+        fflush(stdout);
+
+        std::string line;
+        if (!std::getline(std::cin, line))
+        {
+            printf("\nNo more input, extracting all remaining maps\n");
+            mode = 1;
+            return true;
+        }
+
+        std::size_t first = line.find_first_not_of(" \t\r\n");
+        char answer = first == std::string::npos ? 'y' : char(line[first] | 0x20);
+        switch (answer)
+        {
+            case 'y':
+                return true;
+            case 'n':
+                return false;
+            case 'a':
+                mode = 1;
+                return true;
+            case 's':
+                mode = 2;
+                return false;
+            default:
+                break;
+        }
+    }
+}
+
 void ParsMapFiles()
 {
     char fn[512];
@@ -209,6 +254,17 @@ void ParsMapFiles()
     for (unsigned int i = 0; i < map_count; ++i)
     {
         sprintf(fn,"World\\Maps\\%s\\%s.wdt", map_ids[i].name, map_ids[i].name);
+
+        // only ask about maps that exist in the client data, and ask before the WDT is processed
+        // because that already extracts global map objects
+        {
+            MPQFile wdtProbe(fn);
+            if (wdtProbe.isEof())
+                continue;
+            if (!AskExtractMap(map_ids[i].id, map_ids[i].name))
+                continue;
+        }
+
         WDTFile WDT(fn,map_ids[i].name);
         if (WDT.init(map_ids[i].id))
         {
@@ -243,32 +299,15 @@ void getGamePath()
 
 bool scan_patches(char* scanmatch, std::vector<std::string>& pArchiveNames)
 {
-    int i;
-    char path[512];
+    // scanmatch is "<dir>/<prefix>"; matches <prefix>.MPQ, <prefix>-<N>.MPQ and <prefix>-<letter>.MPQ,
+    // each either an MPQ file or a loose folder with that name
+    std::string match(scanmatch);
+    std::size_t sep = match.find_last_of("/\\");
+    std::string dir = sep == std::string::npos ? "." : match.substr(0, sep);
+    std::string prefix = sep == std::string::npos ? match : match.substr(sep + 1);
 
-    for (i = 1; i <= 99; i++)
-    {
-        if (i != 1)
-        {
-            sprintf(path, "%s-%d.MPQ", scanmatch, i);
-        }
-        else
-        {
-            sprintf(path, "%s.MPQ", scanmatch);
-        }
-#ifdef __linux__
-        if (FILE* h = fopen64(path, "rb"))
-#else
-        if (FILE* h = fopen(path, "rb"))
-#endif
-        {
-            fclose(h);
-            //matches.push_back(path);
-            pArchiveNames.emplace_back(path);
-        }
-    }
-
-    return (true);
+    CollectPatchArchives(dir, prefix, pArchiveNames);
+    return true;
 }
 
 bool fillArchiveNameVector(std::vector<std::string>& pArchiveNames)
@@ -309,13 +348,26 @@ bool fillArchiveNameVector(std::vector<std::string>& pArchiveNames)
     }
     printf("\n");
 
-    // open locale expansion and common files
+    // open locale expansion files, each locale followed by its own patch levels
+    // (patch-<locale>.MPQ, -N, -letter; files or loose folders), so that the common files and the
+    // patches of the data directory opened afterwards take precedence over them
     printf("Adding data files from locale directories.\n");
+    bool foundOne = false;
     for (auto & locale : locales)
     {
+        printf("Locale: %s\n", locale.c_str());
         pArchiveNames.push_back(in_path + locale + "/locale-" + locale + ".MPQ");
         pArchiveNames.push_back(in_path + locale + "/expansion-locale-" + locale + ".MPQ");
         pArchiveNames.push_back(in_path + locale + "/lichking-locale-" + locale + ".MPQ");
+
+        int ret2 = snprintf(path, 512, "%s%s/patch-%s", input_path, locale.c_str(), locale.c_str());
+        if (ret2 < 0)
+        {
+            printf("Error when formatting string");
+            return false;
+        }
+        if (scan_patches(path, pArchiveNames))
+            foundOne = true;
     }
 
     // open expansion and common files
@@ -334,22 +386,6 @@ bool fillArchiveNameVector(std::vector<std::string>& pArchiveNames)
     }
     if (!scan_patches(path, pArchiveNames))
         return (false);
-
-    // now, scan for the patch levels in locale dirs
-    printf("Scanning patch levels from locale directories.\n");
-    bool foundOne = false;
-    for (auto & locale : locales)
-    {
-        printf("Locale: %s\n", locale.c_str());
-        int ret2 = snprintf(path, 512, "%s%s/patch-%s", input_path, locale.c_str(), locale.c_str());
-        if (ret2 < 0)
-        {
-            printf("Error when formatting string");
-            return false;
-        }
-        if (scan_patches(path, pArchiveNames))
-            foundOne = true;
-    }
 
     printf("\n");
 

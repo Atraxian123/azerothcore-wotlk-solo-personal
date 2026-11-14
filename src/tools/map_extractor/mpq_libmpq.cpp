@@ -16,13 +16,119 @@
  */
 
 #include "mpq_libmpq04.h"
+#include <algorithm>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <deque>
 
 ArchiveSet gOpenArchives;
 
+namespace
+{
+    std::string LowerAscii(std::string s)
+    {
+        for (char& c : s)
+            if (c >= 'A' && c <= 'Z')
+                c = char(c - 'A' + 'a');
+        return s;
+    }
+
+    // Resolves "DBFilesClient\\Map.dbc" below a loose folder, ignoring case on every path component
+    // (needed on case sensitive file systems). Returns an empty path when not found.
+    std::filesystem::path ResolveLoosePath(std::string const& root, std::string const& name)
+    {
+        std::filesystem::path current(root);
+        std::string component;
+        std::vector<std::string> parts;
+        for (char c : name)
+        {
+            if (c == '\\' || c == '/')
+            {
+                if (!component.empty())
+                    parts.push_back(component);
+                component.clear();
+            }
+            else
+                component += c;
+        }
+        if (!component.empty())
+            parts.push_back(component);
+
+        std::error_code ec;
+        for (std::string const& part : parts)
+        {
+            std::filesystem::path direct = current / part;
+            if (std::filesystem::exists(direct, ec))
+            {
+                current = direct;
+                continue;
+            }
+
+            bool found = false;
+            std::string lowered = LowerAscii(part);
+            for (std::filesystem::directory_iterator it(current, ec), end; !ec && it != end; it.increment(ec))
+            {
+                if (LowerAscii(it->path().filename().string()) == lowered)
+                {
+                    current = it->path();
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                return {};
+        }
+
+        return std::filesystem::is_regular_file(current, ec) ? current : std::filesystem::path();
+    }
+}
+
+void CollectPatchArchives(std::string const& dir, std::string const& prefix, std::vector<std::string>& out)
+{
+    std::string const lowPrefix = LowerAscii(prefix);
+    std::vector<std::pair<uint32, std::string>> found;   // sort key, path
+
+    std::error_code ec;
+    for (std::filesystem::directory_iterator it(dir.empty() ? "." : dir, ec), end; !ec && it != end; it.increment(ec))
+    {
+        std::string name = LowerAscii(it->path().filename().string());
+        if (name.size() < lowPrefix.size() + 4 || name.compare(0, lowPrefix.size(), lowPrefix) != 0 || name.compare(name.size() - 4, 4, ".mpq") != 0)
+            continue;
+
+        std::string middle = name.substr(lowPrefix.size(), name.size() - lowPrefix.size() - 4);
+        uint32 key;
+        if (middle.empty())
+            key = 0;
+        else if (middle.size() >= 2 && middle[0] == '-' && std::all_of(middle.begin() + 1, middle.end(), [](char c) { return c >= '0' && c <= '9'; }))
+            key = 1 + uint32(std::min<unsigned long>(std::stoul(middle.substr(1)), 100000ul));
+        else if (middle.size() == 2 && middle[0] == '-' && middle[1] >= 'a' && middle[1] <= 'z')
+            key = 200000 + uint32(middle[1] - 'a');
+        else
+            continue;
+
+        found.emplace_back(key, it->path().string());
+    }
+
+    std::sort(found.begin(), found.end());
+    for (auto const& entry : found)
+        out.push_back(entry.second);
+}
+
 MPQArchive::MPQArchive(const char* filename)
 {
+    {
+        std::error_code ec;
+        if (std::filesystem::is_directory(filename, ec))
+        {
+            // loose folder behaving like an archive: its content overrides older archives
+            looseDir = filename;
+            printf("Opening loose folder %s\n", filename);
+            gOpenArchives.push_front(this);
+            return;
+        }
+    }
+
     int result = libmpq__archive_open(&mpq_a, filename, -1);
     printf("Opening %s\n", filename);
     if (result)
@@ -55,6 +161,9 @@ MPQArchive::MPQArchive(const char* filename)
 
 void MPQArchive::close()
 {
+    if (IsLoose())
+        return;
+
     //gOpenArchives.erase(erase(&mpq_a);
     libmpq__archive_close(mpq_a);
 }
@@ -67,6 +176,31 @@ MPQFile::MPQFile(const char* filename):
 {
     for (auto & gOpenArchive : gOpenArchives)
     {
+        if (gOpenArchive->IsLoose())
+        {
+            std::filesystem::path path = ResolveLoosePath(gOpenArchive->looseDir, filename);
+            if (path.empty())
+                continue;
+
+            std::ifstream stream(path, std::ios::binary);
+            std::error_code sizeEc;
+            std::uintmax_t fileSize = std::filesystem::file_size(path, sizeEc);
+            if (!stream || sizeEc)
+                continue;
+
+            size = libmpq__off_t(fileSize);
+            if (size <= 1)
+            {
+                eof = true;
+                buffer = nullptr;
+                return;
+            }
+
+            buffer = new char[size];
+            stream.read(buffer, size);
+            return;
+        }
+
         mpq_archive* mpq_a = gOpenArchive->mpq_a;
 
         uint32_t filenum;

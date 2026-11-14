@@ -20,10 +20,7 @@
 
 #include "libmpq/mpq.h"
 #include "loadlib/loadlib.h"
-#include <algorithm>
 #include <cstring>
-#include <filesystem>
-#include <string>
 #include <deque>
 #include <iostream>
 #include <vector>
@@ -33,31 +30,13 @@ using namespace std;
 class MPQArchive
 {
 public:
-    mpq_archive_s* mpq_a = nullptr;
-    std::string looseDir;   // set when the "archive" is a plain folder instead of an MPQ file
-
-    bool IsLoose() const { return !looseDir.empty(); }
+    mpq_archive_s* mpq_a;
 
     MPQArchive(const char* filename);
     ~MPQArchive() { if (isOpened()) close(); }
 
     void GetFileListTo(vector<string>& filelist)
     {
-        if (IsLoose())
-        {
-            // loose folder: list every file below it as "Dir\\Sub\\file"
-            std::error_code ec;
-            for (std::filesystem::recursive_directory_iterator it(looseDir, ec), end; !ec && it != end; it.increment(ec))
-            {
-                if (!it->is_regular_file(ec))
-                    continue;
-                std::string rel = std::filesystem::relative(it->path(), looseDir, ec).generic_string();
-                std::replace(rel.begin(), rel.end(), '/', '\\');
-                filelist.push_back(rel);
-            }
-            return;
-        }
-
         uint32_t filenum;
         if (libmpq__file_number(mpq_a, "(listfile)", &filenum)) return;
         libmpq__off_t size, transferred;
@@ -91,11 +70,6 @@ private:
     bool isOpened() const;
 };
 typedef std::deque<MPQArchive*> ArchiveSet;
-
-// Collects archives named "<prefix>.mpq", "<prefix>-<N>.mpq" and "<prefix>-<letter>.mpq" (case insensitive)
-// found in dir. Each match can be an MPQ file or a loose folder with that name. Appended in load order
-// (base, numbers ascending, letters ascending), later entries override earlier ones.
-void CollectPatchArchives(std::string const& dir, std::string const& prefix, std::vector<std::string>& out);
 
 class MPQFile
 {

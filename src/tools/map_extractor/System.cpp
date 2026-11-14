@@ -106,6 +106,11 @@ const char* CONF_mpq_list[] =
     "common-2.MPQ",
     "lichking.MPQ",
     "expansion.MPQ",
+    "patch.MPQ",
+    "patch-2.MPQ",
+    "patch-3.MPQ",
+    "patch-4.MPQ",
+    "patch-5.MPQ",
 };
 
 static const char* const langs[] = {"enGB", "enUS", "deDE", "esES", "frFR", "koKR", "zhCN", "zhTW", "enCN", "enTW", "esMX", "ruRU" };
@@ -1143,12 +1148,16 @@ void LoadLocaleMPQFiles(int const locale)
     sprintf(filename, "%s/Data/%s/locale-%s.MPQ", input_path, langs[locale], langs[locale]);
     new MPQArchive(filename);
 
-    // patch-<locale>.MPQ, patch-<locale>-<N>.MPQ and patch-<locale>-<letter>.MPQ, files or loose folders
-    std::vector<std::string> patches;
-    sprintf(filename, "%s/Data/%s", input_path, langs[locale]);
-    CollectPatchArchives(filename, std::string("patch-") + langs[locale], patches);
-    for (std::string const& patch : patches)
-        new MPQArchive(patch.c_str());
+    for (int i = 1; i <= 9; ++i)
+    {
+        char ext[3] = "";
+        if (i > 1)
+            sprintf(ext, "-%i", i);
+
+        sprintf(filename, "%s/Data/%s/patch-%s%s.MPQ", input_path, langs[locale], langs[locale], ext);
+        if (FileExists(filename))
+            new MPQArchive(filename);
+    }
 }
 
 void LoadCommonMPQFiles()
@@ -1161,13 +1170,6 @@ void LoadCommonMPQFiles()
         if (FileExists(filename))
             new MPQArchive(filename);
     }
-
-    // patch.MPQ, patch-<N>.MPQ and patch-<letter>.MPQ, files or loose folders
-    std::vector<std::string> patches;
-    sprintf(filename, "%s/Data", input_path);
-    CollectPatchArchives(filename, "patch", patches);
-    for (std::string const& patch : patches)
-        new MPQArchive(patch.c_str());
 }
 
 inline void CloseMPQFiles()

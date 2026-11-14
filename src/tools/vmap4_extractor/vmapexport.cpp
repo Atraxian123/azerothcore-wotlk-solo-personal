@@ -243,32 +243,15 @@ void getGamePath()
 
 bool scan_patches(char* scanmatch, std::vector<std::string>& pArchiveNames)
 {
-    int i;
-    char path[512];
+    // scanmatch is "<dir>/<prefix>"; matches <prefix>.MPQ, <prefix>-<N>.MPQ and <prefix>-<letter>.MPQ,
+    // each either an MPQ file or a loose folder with that name
+    std::string match(scanmatch);
+    std::size_t sep = match.find_last_of("/\\");
+    std::string dir = sep == std::string::npos ? "." : match.substr(0, sep);
+    std::string prefix = sep == std::string::npos ? match : match.substr(sep + 1);
 
-    for (i = 1; i <= 99; i++)
-    {
-        if (i != 1)
-        {
-            sprintf(path, "%s-%d.MPQ", scanmatch, i);
-        }
-        else
-        {
-            sprintf(path, "%s.MPQ", scanmatch);
-        }
-#ifdef __linux__
-        if (FILE* h = fopen64(path, "rb"))
-#else
-        if (FILE* h = fopen(path, "rb"))
-#endif
-        {
-            fclose(h);
-            //matches.push_back(path);
-            pArchiveNames.emplace_back(path);
-        }
-    }
-
-    return (true);
+    CollectPatchArchives(dir, prefix, pArchiveNames);
+    return true;
 }
 
 bool fillArchiveNameVector(std::vector<std::string>& pArchiveNames)

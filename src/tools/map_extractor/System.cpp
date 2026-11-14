@@ -40,8 +40,6 @@
 #include "wdt.h"
 
 #include <fcntl.h>
-#include <iostream>
-#include <string>
 
 #if defined( __GNUC__ )
 #define _open   open
@@ -108,6 +106,11 @@ const char* CONF_mpq_list[] =
     "common-2.MPQ",
     "lichking.MPQ",
     "expansion.MPQ",
+    "patch.MPQ",
+    "patch-2.MPQ",
+    "patch-3.MPQ",
+    "patch-4.MPQ",
+    "patch-5.MPQ",
 };
 
 static const char* const langs[] = {"enGB", "enUS", "deDE", "esES", "frFR", "koKR", "zhCN", "zhTW", "enCN", "enTW", "esMX", "ruRU" };
@@ -135,50 +138,6 @@ void CreateDir( const std::string& Path )
     {
         printf("Fatal Error: Could not create directory %s check your permissions", Path.c_str());
         exit(1);
-    }
-}
-
-// Interactive per-map confirmation: always on
-// Returns true when the map should be processed. Answers: y/Enter = yes, n = no,
-// a = yes for all remaining maps, s = skip all remaining maps. End of input counts as "a".
-bool AskExtractMap(uint32 id, char const* name)
-{
-    static int mode = 0;    // 0 = ask, 1 = all remaining, 2 = skip remaining
-    if (mode == 1)
-        return true;
-    if (mode == 2)
-        return false;
-
-    for (;;)
-    {
-        printf("Extract map %u (%s)? [Y]es / [n]o / [a]ll remaining / [s]kip remaining: ", id, name);
-        fflush(stdout);
-
-        std::string line;
-        if (!std::getline(std::cin, line))
-        {
-            printf("\nNo more input, extracting all remaining maps\n");
-            mode = 1;
-            return true;
-        }
-
-        std::size_t first = line.find_first_not_of(" \t\r\n");
-        char answer = first == std::string::npos ? 'y' : char(line[first] | 0x20);
-        switch (answer)
-        {
-            case 'y':
-                return true;
-            case 'n':
-                return false;
-            case 'a':
-                mode = 1;
-                return true;
-            case 's':
-                mode = 2;
-                return false;
-            default:
-                break;
-        }
     }
 }
 
@@ -1043,9 +1002,6 @@ void ExtractMapsFromMpq(uint32 build)
             continue;
         }
 
-        if (!AskExtractMap(map_ids[z].id, map_ids[z].name))
-            continue;
-
         for (uint32 y = 0; y < WDT_MAP_SIZE; ++y)
         {
             for (uint32 x = 0; x < WDT_MAP_SIZE; ++x)
@@ -1192,12 +1148,16 @@ void LoadLocaleMPQFiles(int const locale)
     sprintf(filename, "%s/Data/%s/locale-%s.MPQ", input_path, langs[locale], langs[locale]);
     new MPQArchive(filename);
 
-    // patch-<locale>.MPQ, patch-<locale>-<N>.MPQ and patch-<locale>-<letter>.MPQ, files or loose folders
-    std::vector<std::string> patches;
-    sprintf(filename, "%s/Data/%s", input_path, langs[locale]);
-    CollectPatchArchives(filename, std::string("patch-") + langs[locale], patches);
-    for (std::string const& patch : patches)
-        new MPQArchive(patch.c_str());
+    for (int i = 1; i <= 9; ++i)
+    {
+        char ext[3] = "";
+        if (i > 1)
+            sprintf(ext, "-%i", i);
+
+        sprintf(filename, "%s/Data/%s/patch-%s%s.MPQ", input_path, langs[locale], langs[locale], ext);
+        if (FileExists(filename))
+            new MPQArchive(filename);
+    }
 }
 
 void LoadCommonMPQFiles()
@@ -1210,13 +1170,6 @@ void LoadCommonMPQFiles()
         if (FileExists(filename))
             new MPQArchive(filename);
     }
-
-    // patch.MPQ, patch-<N>.MPQ and patch-<letter>.MPQ, files or loose folders
-    std::vector<std::string> patches;
-    sprintf(filename, "%s/Data", input_path);
-    CollectPatchArchives(filename, "patch", patches);
-    for (std::string const& patch : patches)
-        new MPQArchive(patch.c_str());
 }
 
 inline void CloseMPQFiles()

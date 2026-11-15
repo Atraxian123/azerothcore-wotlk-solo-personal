@@ -26,16 +26,258 @@
 #include "CellImpl.h"
 #include "Chat.h"
 #include "CommandScript.h"
+#include "Config.h"
+#include "DetourNavMesh.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "Log.h"
 #include "MMapMgr.h"
 #include "Map.h"
+#include "MapDefines.h"
+#include "MapMgr.h"
+#include "ObjectAccessor.h"
 #include "PathGenerator.h"
 #include "Player.h"
 #include "RBAC.h"
+#include "ScriptMgr.h"
+#include "StringFormat.h"
 #include "TargetedMovementGenerator.h"
+#include "WorldScript.h"
+
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+
+#ifndef _WIN32
+#include <sys/wait.h>
+#endif
 
 using namespace Acore::ChatCommands;
+
+namespace
+{
+    // Rebuilds a single mmap tile by running mmaps_generator for it on a worker thread, then swaps the
+    // fresh tile into the live navmesh on the main thread (between map updates, so no map thread is
+    // querying the mesh while it changes).
+    class NavMeshTileRebuilder
+    {
+    public:
+        struct Job
+        {
+            ObjectGuid requester;
+            uint32 mapId;
+            uint32 instanceId;
+            uint32 gridX;       // tile file name is <map><gridX><gridY>.mmtile, same as the server loads it
+            uint32 gridY;
+            std::string dataDir;
+            std::string generatorPath;
+            std::string configPath; // optional
+        };
+
+        struct Result
+        {
+            Job job;
+            bool success{false};
+            std::string message;
+            uint32 seconds{0};
+        };
+
+        // false when a rebuild is already running
+        static bool TryStart(Job job)
+        {
+            std::lock_guard<std::mutex> guard(_mutex);
+            if (_running)
+                return false;
+
+            if (_worker.joinable())
+                _worker.join();
+
+            _running = true;
+            _worker = std::thread([job = std::move(job)]() mutable { Run(std::move(job)); });
+            return true;
+        }
+
+        // main thread, called every world tick
+        static void ProcessCompleted()
+        {
+            if (!_hasResults.load(std::memory_order_acquire))
+                return;
+
+            std::vector<Result> results;
+            {
+                std::lock_guard<std::mutex> guard(_mutex);
+                results.swap(_results);
+                _hasResults = false;
+            }
+
+            for (Result const& result : results)
+                Apply(result);
+        }
+
+        static void Shutdown()
+        {
+            std::thread worker;
+            {
+                std::lock_guard<std::mutex> guard(_mutex);
+                worker = std::move(_worker);
+            }
+            if (worker.joinable())
+                worker.join();
+        }
+
+    private:
+        static std::string TilePath(Job const& job)
+        {
+            return Acore::StringFormat(MMAP::TILE_FILE_NAME_FORMAT, job.dataDir, job.mapId, job.gridX, job.gridY);
+        }
+
+        static int ExitCodeOf(int rc)
+        {
+#ifdef _WIN32
+            return rc;
+#else
+            return WIFEXITED(rc) ? WEXITSTATUS(rc) : -1;
+#endif
+        }
+
+        // worker thread: touches files and the generator process only, never server state
+        static void Run(Job job)
+        {
+            namespace fs = std::filesystem;
+
+            Result result;
+            result.job = job;
+            auto const start = std::chrono::steady_clock::now();
+
+            std::string const tile = TilePath(job);
+            std::string const backup = tile + ".bak";
+            std::error_code ec;
+
+            // mmaps_generator skips a tile that already exists with the same settings, so move the old one away
+            bool const hadOld = fs::exists(tile, ec);
+            if (hadOld)
+            {
+                fs::remove(backup, ec);
+                fs::rename(tile, backup, ec);
+                if (ec)
+                {
+                    result.message = Acore::StringFormat("could not move the old tile away ({}): {}", tile, ec.message());
+                    Finish(std::move(result), start);
+                    return;
+                }
+            }
+
+            // generator args: <map> --tile <tileX>,<tileY>; the generator names the file <map><tileY><tileX>,
+            // so its X is the server's gridY and its Y is the server's gridX
+            std::string command = Acore::StringFormat("\"{}\" {} --tile {},{} --silent --threads 1",
+                job.generatorPath, job.mapId, job.gridY, job.gridX);
+            if (!job.configPath.empty())
+                command += Acore::StringFormat(" --config \"{}\"", job.configPath);
+#ifdef _WIN32
+            command = "\"" + command + "\"";   // cmd.exe strips the outer quotes
+#endif
+
+            LOG_INFO("maps", "NavMesh rebuild: running {}", command);
+            int const exitCode = ExitCodeOf(std::system(command.c_str()));
+
+            bool const produced = fs::exists(tile, ec);
+            if (exitCode == 0 && produced)
+            {
+                result.success = true;
+                fs::remove(backup, ec);
+            }
+            else
+            {
+                // keep the previous tile on any failure
+                if (produced)
+                    fs::remove(tile, ec);
+                if (hadOld)
+                    fs::rename(backup, tile, ec);
+
+                if (exitCode != 0)
+                    result.message = Acore::StringFormat("mmaps_generator failed (exit code {}). Check MMapRebuild.GeneratorPath / MMapRebuild.ConfigPath and the console output", exitCode);
+                else
+                    result.message = Acore::StringFormat("mmaps_generator produced no tile (no geometry here, or the dataDir in mmaps-config.yaml differs from DataDir: expected {})", tile);
+            }
+
+            Finish(std::move(result), start);
+        }
+
+        static void Finish(Result result, std::chrono::steady_clock::time_point start)
+        {
+            result.seconds = uint32(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count());
+
+            std::lock_guard<std::mutex> guard(_mutex);
+            _results.push_back(std::move(result));
+            _hasResults = true;
+            _running = false;
+        }
+
+        // main thread
+        static void Apply(Result const& result)
+        {
+            Job const& job = result.job;
+            Player* player = ObjectAccessor::FindConnectedPlayer(job.requester);
+
+            auto say = [&](std::string const& text)
+            {
+                LOG_INFO("maps", "NavMesh rebuild [map {} tile {},{}]: {}", job.mapId, job.gridX, job.gridY, text);
+                if (player && player->GetSession())
+                    ChatHandler(player->GetSession()).SendSysMessage(text);
+            };
+
+            if (!result.success)
+            {
+                say("Rebuild failed, old tile kept: " + result.message);
+                return;
+            }
+
+            Map* map = sMapMgr->FindMap(job.mapId, job.instanceId);
+            dtNavMesh* navMesh = map ? map->GetMapCollisionData().GetMMapNavMeshSharedPtr().get() : nullptr;
+            if (!navMesh)
+            {
+                say(Acore::StringFormat("Tile {:03}{:02}{:02} rebuilt in {}s. The map has no live navmesh, so it will be used the next time the map loads.", job.mapId, job.gridX, job.gridY, result.seconds));
+                return;
+            }
+
+            // read the new file's detour header to find which live tile it replaces
+            dtMeshHeader meshHeader;
+            {
+                FILE* file = fopen(TilePath(job).c_str(), "rb");
+                MmapTileHeader fileHeader;
+                bool ok = file && fread(&fileHeader, sizeof(fileHeader), 1, file) == 1 && fileHeader.mmapMagic == MMAP_MAGIC &&
+                          fread(&meshHeader, sizeof(meshHeader), 1, file) == 1;
+                if (file)
+                    fclose(file);
+                if (!ok)
+                {
+                    say("Tile rebuilt but its header could not be read, restart to apply it.");
+                    return;
+                }
+            }
+
+            if (dtTileRef oldRef = navMesh->getTileRefAt(meshHeader.x, meshHeader.y, meshHeader.layer))
+                navMesh->removeTile(oldRef, nullptr, nullptr);
+
+            if (MMAP::MMapMgr::LoadTile(navMesh, job.mapId, job.gridX, job.gridY))
+                say(Acore::StringFormat("Navmesh tile {:03}[{:02},{:02}] rebuilt in {}s and reloaded.", job.mapId, job.gridX, job.gridY, result.seconds));
+            else
+                say("Tile rebuilt but reloading it into the live navmesh failed, restart to apply it.");
+        }
+
+        static inline std::mutex _mutex;
+        static inline std::thread _worker;
+        static inline std::vector<Result> _results;
+        static inline std::atomic<bool> _hasResults{false};
+        static inline bool _running{false};
+    };
+}
 
 class mmaps_commandscript : public CommandScript
 {
@@ -55,9 +297,55 @@ public:
 
         static ChatCommandTable commandTable =
         {
-            { "mmap", mmapCommandTable }
+            { "mmap",           mmapCommandTable },
+            { "rebuildnavmesh", HandleRebuildNavMeshCommand, SEC_GAMEMASTER, Console::No }
         };
         return commandTable;
+    }
+
+    // .rebuildnavmesh: rebuilds the mmap tile the player stands on, from the current maps/vmaps data
+    static bool HandleRebuildNavMeshCommand(ChatHandler* handler)
+    {
+        Player* player = handler->GetSession() ? handler->GetSession()->GetPlayer() : nullptr;
+        if (!player)
+            return false;
+
+        Map* map = player->GetMap();
+        if (!map->GetMapCollisionData().GetMMapData().GetNavMesh())
+        {
+            handler->SendSysMessage("This map has no navmesh loaded (no mmaps/<map>.mmap). Generate it once with mmaps_generator first.");
+            return true;
+        }
+
+        std::string const generatorPath = sConfigMgr->GetOption<std::string>("MMapRebuild.GeneratorPath", "mmaps_generator");
+        std::string const configPath = sConfigMgr->GetOption<std::string>("MMapRebuild.ConfigPath", "");
+        if (generatorPath.find('"') != std::string::npos || configPath.find('"') != std::string::npos)
+        {
+            handler->SendSysMessage("MMapRebuild.GeneratorPath / MMapRebuild.ConfigPath must not contain double quotes.");
+            return true;
+        }
+
+        // the same grid the server uses to pick the tile file of this position
+        Cell cell(Acore::ComputeCellCoord(player->GetPositionX(), player->GetPositionY()));
+
+        NavMeshTileRebuilder::Job job;
+        job.requester = player->GetGUID();
+        job.mapId = map->GetId();
+        job.instanceId = map->GetInstanceId();
+        job.gridX = cell.GridX();
+        job.gridY = cell.GridY();
+        job.dataDir = sConfigMgr->GetOption<std::string>("DataDir", ".");
+        job.generatorPath = generatorPath;
+        job.configPath = configPath;
+
+        if (!NavMeshTileRebuilder::TryStart(std::move(job)))
+        {
+            handler->SendSysMessage("A navmesh rebuild is already running, wait for it to finish.");
+            return true;
+        }
+
+        handler->PSendSysMessage("Rebuilding navmesh tile {:03}[{:02},{:02}] in the background, you will be told when it is done.", map->GetId(), cell.GridX(), cell.GridY());
+        return true;
     }
 
     static bool HandleMmapPathCommand(ChatHandler* handler, Optional<std::string> param)
@@ -336,7 +624,18 @@ public:
     }
 };
 
+// applies finished rebuilds on the main thread, right after the maps were updated
+class mmaps_rebuild_worldscript : public WorldScript
+{
+public:
+    mmaps_rebuild_worldscript() : WorldScript("mmaps_rebuild_worldscript", { WORLDHOOK_ON_UPDATE, WORLDHOOK_ON_SHUTDOWN }) { }
+
+    void OnUpdate(uint32 /*diff*/) override { NavMeshTileRebuilder::ProcessCompleted(); }
+    void OnShutdown() override { NavMeshTileRebuilder::Shutdown(); }
+};
+
 void AddSC_mmaps_commandscript()
 {
     new mmaps_commandscript();
+    new mmaps_rebuild_worldscript();
 }

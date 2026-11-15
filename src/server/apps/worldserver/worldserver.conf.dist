@@ -72,6 +72,7 @@
 #    DEBUG
 #    DYNAMIC RESPAWN SETTINGS
 #    AOE LOOT
+#    MMAP TILE REBUILD
 #
 ###################################################################################################
 
@@ -4860,6 +4861,30 @@ Enabled = 1
 #        Default:     15
 
 AoELootRadius = 15
+
+#
+###################################################################################################
+
+###################################################################################################
+# MMAP TILE REBUILD (.rebuildnavmesh)
+#
+#    MMapRebuild.GeneratorPath
+#        Description: Path of the mmaps_generator executable used by the .rebuildnavmesh command
+#                     (game masters and above) to rebuild the navmesh tile the character stands on.
+#                     Use an absolute path if the generator is not in the worldserver working
+#                     directory.
+#        Default:     "mmaps_generator"
+
+MMapRebuild.GeneratorPath = "mmaps_generator"
+
+#
+#    MMapRebuild.ConfigPath
+#        Description: Path of the mmaps-config.yaml handed to the generator. Its dataDir must point
+#                     to the same directory as DataDir above. Empty = the generator looks for the
+#                     file in its own working directory.
+#        Default:     ""
+
+MMapRebuild.ConfigPath = ""
 
 #
 ###################################################################################################

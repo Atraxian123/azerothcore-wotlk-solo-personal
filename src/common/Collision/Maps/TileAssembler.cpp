@@ -21,6 +21,7 @@
 #include "MapTree.h"
 #include "VMapDefinitions.h"
 #include <boost/filesystem.hpp>
+#include <chrono>
 #include <iomanip>
 #include <set>
 #include <sstream>
@@ -78,15 +79,34 @@ namespace VMAP
             // build global map tree
             std::vector<ModelSpawn*> mapSpawns;
             UniqueEntryMap::iterator entry;
-            printf("Calculating model bounds for map %u...\n", map_iter->first);
+            uint32 const totalSpawns = map_iter->second->UniqueEntries.size();
+            uint32 processedSpawns = 0;
+            uint32 skippedSpawns = 0;
+            auto const boundsStart = std::chrono::steady_clock::now();
+            auto lastReport = boundsStart;
+            printf("Calculating model bounds for map %u (%u spawns)...\n", map_iter->first, totalSpawns);
             for (entry = map_iter->second->UniqueEntries.begin(); entry != map_iter->second->UniqueEntries.end(); ++entry)
             {
+                ++processedSpawns;
+                auto const now = std::chrono::steady_clock::now();
+                if (now - lastReport >= std::chrono::seconds(5))
+                {
+                    lastReport = now;
+                    printf("  bounds: %u / %u spawns (%.1f%%), %u unique M2 models cached, %lld s elapsed\n",
+                        processedSpawns, totalSpawns, 100.0 * processedSpawns / totalSpawns, uint32(iM2VertexCache.size()),
+                        (long long)std::chrono::duration_cast<std::chrono::seconds>(now - boundsStart).count());
+                    fflush(stdout);
+                }
+
                 // M2 models don't have a bound set in WDT/ADT placement data, i still think they're not used for LoS at all on retail
                 if (entry->second.flags & MOD_M2)
                 {
                     if (!calculateTransformedBound(entry->second))
                     {
-                        break;
+                        // leave this placement out instead of aborting the loop and leaving the rest without bounds
+                        printf("  error: cannot read model '%s', skipping spawn %u\n", entry->second.name.c_str(), entry->second.ID);
+                        ++skippedSpawns;
+                        continue;
                     }
                 }
                 else if (entry->second.flags & MOD_WORLDSPAWN) // WMO maps and terrain maps use different origin, so we need to adapt :/
@@ -99,7 +119,11 @@ namespace VMAP
                 spawnedModelFiles.insert(entry->second.name);
             }
 
-            printf("Creating map tree for map %u...\n", map_iter->first);
+            printf("Bounds done for map %u: %u spawns in %lld s%s\n", map_iter->first, processedSpawns,
+                (long long)std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - boundsStart).count(),
+                skippedSpawns ? (std::string(", ") + std::to_string(skippedSpawns) + " skipped (see errors above)").c_str() : "");
+            printf("Creating map tree for map %u (%u models)...\n", map_iter->first, uint32(mapSpawns.size()));
+            fflush(stdout);
             BIH pTree;
 
             try
@@ -118,6 +142,9 @@ namespace VMAP
             {
                 modelNodeIdx.insert(pair<uint32, uint32>(mapSpawns[i]->ID, i));
             }
+
+            printf("Map tree built, writing %03u.vmtree and tile files...\n", map_iter->first);
+            fflush(stdout);
 
             // write map tree file
             std::stringstream mapfilename;
@@ -154,6 +181,7 @@ namespace VMAP
             // write map tile files, similar to ADT files, only with extra BSP tree node info
             TileMap& tileEntries = map_iter->second->TileEntries;
             TileMap::iterator tile;
+            uint32 tilesWritten = 0;
             for (tile = tileEntries.begin(); tile != tileEntries.end(); ++tile)
             {
                 const ModelSpawn& spawn = map_iter->second->UniqueEntries[tile->second];
@@ -188,8 +216,11 @@ namespace VMAP
                         if (success && fwrite(&nIdx->second, sizeof(uint32), 1, tilefile) != 1) { success = false; }
                     }
                     fclose(tilefile);
+                    ++tilesWritten;
                 }
             }
+            printf("Map %u finished: %u tile files written\n", map_iter->first, tilesWritten);
+            fflush(stdout);
             // break; //test, extract only first map; TODO: remvoe this line
         }
 
@@ -227,6 +258,7 @@ namespace VMAP
         }
         printf("Read coordinate mapping...\n");
         uint32 mapID, tileX, tileY, check = 0;
+        uint32 readSpawns = 0;
         G3D::Vector3 v1, v2;
         ModelSpawn spawn;
         while (!feof(dirf))
@@ -258,7 +290,14 @@ namespace VMAP
 
             current->UniqueEntries.emplace(spawn.ID, spawn);
             current->TileEntries.insert(pair<uint32, uint32>(StaticMapTree::packTileID(tileX, tileY), spawn.ID));
+
+            if (++readSpawns % 200000 == 0)
+            {
+                printf("  read %u spawn entries...\n", readSpawns);
+                fflush(stdout);
+            }
         }
+        printf("Read %u spawn entries from dir_bin\n", readSpawns);
         bool success = (ferror(dirf) == 0);
         fclose(dirf);
         return success;
@@ -266,55 +305,64 @@ namespace VMAP
 
     bool TileAssembler::calculateTransformedBound(ModelSpawn& spawn)
     {
-        std::string modelFilename(iSrcDir);
-        modelFilename.push_back('/');
-        modelFilename.append(spawn.name);
+        // every placement of the same model shares its vertices, read the model file only the first time
+        auto cached = iM2VertexCache.find(spawn.name);
+        if (cached == iM2VertexCache.end())
+        {
+            std::string modelFilename(iSrcDir);
+            modelFilename.push_back('/');
+            modelFilename.append(spawn.name);
+
+            WorldModel_Raw raw_model;
+            if (!raw_model.Read(modelFilename.c_str()))
+            {
+                return false;
+            }
+
+            uint32 groups = raw_model.groupsArray.size();
+            if (groups != 1)
+            {
+                printf("Warning: '%s' does not seem to be a M2 model!\n", modelFilename.c_str());
+            }
+
+            std::vector<Vector3> vertices; // should be only one group for M2 files...
+            for (uint32 g = 0; g < groups; ++g)
+            {
+                std::vector<Vector3>& groupVertices = raw_model.groupsArray[g].vertexArray;
+                if (groupVertices.empty())
+                {
+                    std::cout << "error: model '" << spawn.name << "' has no geometry!" << std::endl;
+                    continue;
+                }
+
+                vertices.insert(vertices.end(), groupVertices.begin(), groupVertices.end());
+            }
+
+            cached = iM2VertexCache.emplace(spawn.name, std::move(vertices)).first;
+        }
 
         ModelPosition modelPosition;
         modelPosition.iDir = spawn.iRot;
         modelPosition.iScale = spawn.iScale;
         modelPosition.init();
 
-        WorldModel_Raw raw_model;
-        if (!raw_model.Read(modelFilename.c_str()))
-        {
-            return false;
-        }
-
-        uint32 groups = raw_model.groupsArray.size();
-        if (groups != 1)
-        {
-            printf("Warning: '%s' does not seem to be a M2 model!\n", modelFilename.c_str());
-        }
-
         AABox modelBound;
         bool boundEmpty = true;
 
-        for (uint32 g = 0; g < groups; ++g) // should be only one for M2 files...
+        for (Vector3 const& vertex : cached->second)
         {
-            std::vector<Vector3>& vertices = raw_model.groupsArray[g].vertexArray;
+            Vector3 v = modelPosition.transform(vertex);
 
-            if (vertices.empty())
+            if (boundEmpty)
             {
-                std::cout << "error: model '" << spawn.name << "' has no geometry!" << std::endl;
-                continue;
+                modelBound = AABox(v, v), boundEmpty = false;
             }
-
-            uint32 nvectors = vertices.size();
-            for (uint32 i = 0; i < nvectors; ++i)
+            else
             {
-                Vector3 v = modelPosition.transform(vertices[i]);
-
-                if (boundEmpty)
-                {
-                    modelBound = AABox(v, v), boundEmpty = false;
-                }
-                else
-                {
-                    modelBound.merge(v);
-                }
+                modelBound.merge(v);
             }
         }
+
         spawn.iBound = modelBound + spawn.iPos;
         spawn.flags |= MOD_HAS_BOUND;
         return true;

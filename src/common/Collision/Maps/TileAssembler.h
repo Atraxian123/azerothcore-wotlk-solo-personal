@@ -22,6 +22,9 @@
 #include <G3D/Vector3.h>
 #include <map>
 #include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "ModelInstance.h"
 #include "WorldModel.h"
@@ -97,6 +100,9 @@ namespace VMAP
         G3D::Table<std::string, unsigned int > iUniqueNameIds;
         MapData mapData;
         std::set<std::string> spawnedModelFiles;
+        // vertices of every M2 model already read for the bound calculation, so each model file is
+        // parsed once instead of once per placement
+        std::unordered_map<std::string, std::vector<G3D::Vector3>> iM2VertexCache;
 
     public:
         TileAssembler(const std::string& pSrcDirName, const std::string& pDestDirName);

@@ -43,27 +43,65 @@ bool Model::open()
 
     _unload();
 
-    memcpy(&header, f.getBuffer(), sizeof(ModelHeader));
-    if (header.nBoundingTriangles > 0)
+    std::size_t const fileSize = f.getSize();
+
+    // header must be fully inside the file and look like a legacy (MD20) model
+    if (fileSize < sizeof(ModelHeader))
     {
-        f.seek(0);
-        f.seekRelative(header.ofsBoundingVertices);
-        vertices = new Vec3D[header.nBoundingVertices];
-        f.read(vertices, header.nBoundingVertices * 12);
-        for (uint32 i = 0; i < header.nBoundingVertices; i++)
-            vertices[i] = fixCoordSystem(vertices[i]);
-        f.seek(0);
-        f.seekRelative(header.ofsBoundingTriangles);
-        indices = new uint16[header.nBoundingTriangles];
-        f.read(indices, header.nBoundingTriangles * 2);
-        f.close();
-    }
-    else
-    {
-        //printf("not included %s\n", filename.c_str());
         f.close();
         return false;
     }
+
+    memcpy(&header, f.getBuffer(), sizeof(ModelHeader));
+
+    if (memcmp(header.id, "MD20", 4) != 0)
+    {
+        // not a classic M2 (e.g. chunked MD21 or garbage): the header layout doesn't apply
+        f.close();
+        return false;
+    }
+
+    if (header.nBoundingTriangles == 0 || header.nBoundingVertices == 0)
+    {
+        f.close();
+        return false;
+    }
+
+    // validate counts/offsets against the real file size (64 bit math, no uint32 overflow)
+    uint64 const vertBytes = uint64(header.nBoundingVertices) * sizeof(Vec3D);
+    uint64 const vertEnd = uint64(header.ofsBoundingVertices) + vertBytes;
+    uint64 const idxBytes = uint64(header.nBoundingTriangles) * sizeof(uint16);
+    uint64 const idxEnd = uint64(header.ofsBoundingTriangles) + idxBytes;
+    if (vertEnd > fileSize || idxEnd > fileSize)
+    {
+        printf("Skipping model %s: bounding data (%u vertices, %u indices) exceeds file size %zu\n",
+            filename.c_str(), header.nBoundingVertices, header.nBoundingTriangles, fileSize);
+        f.close();
+        return false;
+    }
+
+    vertices = new Vec3D[header.nBoundingVertices];
+    memcpy(vertices, f.getBuffer() + header.ofsBoundingVertices, size_t(vertBytes));
+    for (uint32 i = 0; i < header.nBoundingVertices; i++)
+        vertices[i] = fixCoordSystem(vertices[i]);
+
+    indices = new uint16[header.nBoundingTriangles];
+    memcpy(indices, f.getBuffer() + header.ofsBoundingTriangles, size_t(idxBytes));
+
+    // every index must point to an existing vertex, otherwise the vmap is unusable
+    for (uint32 i = 0; i < header.nBoundingTriangles; ++i)
+    {
+        if (indices[i] >= header.nBoundingVertices)
+        {
+            printf("Skipping model %s: bounding index %u out of range (%u vertices)\n",
+                filename.c_str(), uint32(indices[i]), header.nBoundingVertices);
+            f.close();
+            _unload();
+            return false;
+        }
+    }
+
+    f.close();
     return true;
 }
 
